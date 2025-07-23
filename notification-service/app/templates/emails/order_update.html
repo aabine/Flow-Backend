@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>{{ subject }}</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            color: #333333;
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .header {
+            background-color: #1a73e8;
+            color: white;
+            padding: 20px;
+            text-align: center;
+            border-radius: 5px 5px 0 0;
+        }
+        .content {
+            padding: 20px;
+            border: 1px solid #dddddd;
+            border-top: none;
+            border-radius: 0 0 5px 5px;
+        }
+        .button {
+            display: inline-block;
+            padding: 10px 20px;
+            background-color: #1a73e8;
+            color: white;
+            text-decoration: none;
+            border-radius: 4px;
+            margin: 15px 0;
+        }
+        .footer {
+            margin-top: 20px;
+            font-size: 12px;
+            color: #777777;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Oxygen Supply Platform</h1>
+    </div>
+    
+    <div class="content">
+        <h2>{{ subject }}</h2>
+        
+        <p>Hello {{ user_name }},</p>
+        
+        <p>{{ message }}</p>
+        
+        {% if order_id %}
+        <p><strong>Order ID:</strong> {{ order_id }}</p>
+        {% endif %}
+        
+        {% if status %}
+        <p><strong>Status:</strong> {{ status }}</p>
+        {% endif %}
+        
+        {% if action_url %}
+        <div style="text-align: center; margin: 25px 0;">
+            <a href="{{ action_url }}" class="button">View Order</a>
+        </div>
+        {% endif %}
+        
+        <p>If you have any questions, please don't hesitate to contact our support team.</p>
+        
+        <p>Best regards,<br>The Oxygen Supply Team</p>
+    </div>
+    
+    <div class="footer">
+        <p>© 2025 Oxygen Supply Platform. All rights reserved.</p>
+        <p>This is an automated message, please do not reply to this email.</p>
+        <p>
+            <a href="{{unsubscribe_url}}" style="color: #1a73e8; text-decoration: none;">Unsubscribe</a> | 
+            <a href="{{preferences_url}}" style="color: #1a73e8; text-decoration: none;">Manage Preferences</a>
+        </p>
+    </div>
+</body>
+</html>

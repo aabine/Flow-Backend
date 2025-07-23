@@ -1,0 +1,30 @@
+Oxygen Supply Platform
+{% if subject %}{{ subject }}
+{% else %}Order Update
+{% endif %}
+
+Hello {{ user_name }},
+
+{{ message }}
+
+{% if order_id %}Order ID: {{ order_id }}
+{% endif %}
+
+{% if status %}Status: {{ status }}
+{% endif %}
+
+{% if action_url %}
+View Order: {{ action_url }}
+{% endif %}
+
+If you have any questions, please don't hesitate to contact our support team.
+
+Best regards,
+The Oxygen Supply Team
+
+---
+© 2025 Oxygen Supply Platform. All rights reserved.
+This is an automated message, please do not reply to this email.
+
+Unsubscribe: {{ unsubscribe_url }}
+Manage Preferences: {{ preferences_url }}

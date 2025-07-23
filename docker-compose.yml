@@ -1,0 +1,243 @@
+version: '3.8'
+
+services:
+  # Databases
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_DB: oxygen_platform
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - oxygen-network
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6380:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - oxygen-network
+
+  mongodb:
+    image: mongo:6
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+    networks:
+      - oxygen-network
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    networks:
+      - oxygen-network
+
+  # API Gateway
+  api-gateway:
+    build:
+      context: .
+      dockerfile: ./api-gateway/Dockerfile
+    working_dir: /app/api-gateway
+    ports:
+      - "8000:8000"
+    environment:
+      - USER_SERVICE_URL=http://user-service:8001
+      - SUPPLIER_ONBOARDING_SERVICE_URL=http://supplier-onboarding-service:8002
+      - LOCATION_SERVICE_URL=http://location-service:8003
+      - INVENTORY_SERVICE_URL=http://inventory-service:8004
+      - ORDER_SERVICE_URL=http://order-service:8005
+      - PRICING_SERVICE_URL=http://pricing-service:8006
+      - DELIVERY_SERVICE_URL=http://delivery-service:8007
+      - PAYMENT_SERVICE_URL=http://payment-service:8008
+      - REVIEW_SERVICE_URL=http://review-service:8009
+      - NOTIFICATION_SERVICE_URL=http://notification-service:8010
+      - ADMIN_SERVICE_URL=http://admin-service:8011
+      - WEBSOCKET_SERVICE_URL=http://websocket-service:8012
+    depends_on:
+      - user-service
+      - location-service
+      - order-service
+      - inventory-service
+      - payment-service
+      - notification-service
+      - websocket-service
+    networks:
+      - oxygen-network
+
+  # Microservices
+  user-service:
+    build:
+      context: .
+      dockerfile: ./user-service/Dockerfile
+    working_dir: /app/user-service
+    ports:
+      - "8001:8001"
+    environment:
+      - DATABASE_URL=postgresql://user:password@postgres:5432/oxygen_platform
+      - REDIS_URL=redis://redis:6379/0
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - oxygen-network
+
+  order-service:
+    build:
+      context: .
+      dockerfile: ./order-service/Dockerfile
+    working_dir: /app/order-service
+    ports:
+      - "8005:8005"
+    environment:
+      - DATABASE_URL=postgresql://user:password@postgres:5432/oxygen_platform
+      - REDIS_URL=redis://redis:6379/0
+      - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672/
+      - INVENTORY_SERVICE_URL=http://inventory-service:8004
+      - LOCATION_SERVICE_URL=http://location-service:8003
+      - NOTIFICATION_SERVICE_URL=http://notification-service:8010
+      - PRICING_SERVICE_URL=http://pricing-service:8006
+    depends_on:
+      - postgres
+      - redis
+      - rabbitmq
+    networks:
+      - oxygen-network
+
+  inventory-service:
+    build:
+      context: .
+      dockerfile: ./inventory-service/Dockerfile
+    working_dir: /app/inventory-service
+    ports:
+      - "8004:8004"
+    environment:
+      - DATABASE_URL=postgresql://user:password@postgres:5432/oxygen_platform
+      - REDIS_URL=redis://redis:6379/0
+      - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672/
+    depends_on:
+      - postgres
+      - redis
+      - rabbitmq
+    networks:
+      - oxygen-network
+
+  payment-service:
+    build:
+      context: .
+      dockerfile: ./payment-service/Dockerfile
+    working_dir: /app
+    ports:
+      - "8008:8008"
+    environment:
+      - DATABASE_URL=postgresql://user:password@postgres:5432/oxygen_platform
+      - REDIS_URL=redis://redis:6379/0
+      - PAYSTACK_SECRET_KEY=${PAYSTACK_SECRET_KEY}
+      - PAYSTACK_PUBLIC_KEY=${PAYSTACK_PUBLIC_KEY}
+      - PLATFORM_FEE_PERCENTAGE=5.0
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - oxygen-network
+
+  location-service:
+    build:
+      context: .
+      dockerfile: ./location-service/Dockerfile
+    working_dir: /app/location-service
+    ports:
+      - "8003:8003"
+    environment:
+      - DATABASE_URL=postgresql://user:password@postgres:5432/oxygen_platform
+      - REDIS_URL=redis://redis:6379/0
+      - WEBSOCKET_SERVICE_URL=http://websocket-service:8012
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - oxygen-network
+
+  notification-service:
+    build:
+      context: .
+      dockerfile: ./notification-service/Dockerfile
+    working_dir: /app/notification-service
+    ports:
+      - "8010:8010"
+    environment:
+      - DATABASE_URL=postgresql://user:password@postgres:5432/oxygen_platform
+      - REDIS_URL=redis://redis:6379/0
+      - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672/
+      - WEBSOCKET_SERVICE_URL=http://websocket-service:8012
+      - SMTP_HOST=${SMTP_HOST}
+      - SMTP_PORT=${SMTP_PORT}
+      - SMTP_USERNAME=${SMTP_USERNAME}
+      - SMTP_PASSWORD=${SMTP_PASSWORD}
+      - TWILIO_ACCOUNT_SID=${TWILIO_ACCOUNT_SID}
+      - TWILIO_AUTH_TOKEN=${TWILIO_AUTH_TOKEN}
+      - TWILIO_PHONE_NUMBER=${TWILIO_PHONE_NUMBER}
+    depends_on:
+      - postgres
+      - redis
+      - rabbitmq
+      - websocket-service
+    networks:
+      - oxygen-network
+
+  websocket-service:
+    build:
+      context: .
+      dockerfile: ./websocket-service/Dockerfile
+    working_dir: /app/websocket-service
+    ports:
+      - "8012:8012"
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - USER_SERVICE_URL=http://user-service:8001
+      - SECRET_KEY=${SECRET_KEY}
+      - ALGORITHM=HS256
+      - WEBSOCKET_PING_INTERVAL=30
+      - WEBSOCKET_MAX_IDLE_MINUTES=30
+    depends_on:
+      - redis
+      - user-service
+    networks:
+      - oxygen-network
+
+  supplier-onboarding-service:
+    build:
+      context: .
+      dockerfile: ./supplier-onboarding-service/Dockerfile
+    working_dir: /app/supplier-onboarding-service
+    ports:
+      - "8002:8002"
+    environment:
+      - DATABASE_URL=postgresql://user:password@postgres:5432/oxygen_platform
+    depends_on:
+      - postgres
+    networks:
+      - oxygen-network
+
+volumes:
+  postgres_data:
+  redis_data:
+  mongodb_data:
+  rabbitmq_data:
+
+networks:
+  oxygen-network:
+    driver: bridge
