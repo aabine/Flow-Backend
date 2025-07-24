@@ -6,12 +6,13 @@ import logging
 from pathlib import Path
 from jinja2 import Environment, FileSystemLoader
 
-from app.core.config import settings
+from app.core.config import get_settings
 
 logger = logging.getLogger(__name__)
 
 class EmailService:
     def __init__(self):
+        settings = get_settings()
         self.smtp_server = settings.SMTP_HOST
         self.smtp_port = settings.SMTP_PORT
         self.smtp_username = settings.SMTP_USERNAME

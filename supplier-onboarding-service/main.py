@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.api.onboarding import router as onboarding_router
+from datetime import datetime
 
 app = FastAPI(
     title="Supplier Onboarding Service",
@@ -20,4 +21,13 @@ app.include_router(onboarding_router)
 
 @app.get("/")
 async def root():
-    return {"service": "Supplier Onboarding Service", "version": "1.0.0"} 
+    return {"service": "Supplier Onboarding Service", "version": app.version}
+
+@app.get("/health")
+def health():
+    return {
+        "status": "healthy",
+        "service": app.title,
+        "version": app.version,
+        "timestamp": datetime.now().isoformat()
+    }

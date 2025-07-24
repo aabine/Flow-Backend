@@ -1,7 +1,7 @@
 import logging
 from typing import Optional, Dict, Any
 import requests
-from app.core.config import settings
+from app.core.config import get_settings
 
 logger = logging.getLogger(__name__)
 
@@ -13,6 +13,7 @@ class SMSService:
     """
     
     def __init__(self):
+        settings = get_settings()
         self.api_key = settings.SMS_API_KEY
         self.sender_id = settings.SMS_SENDER_ID
         self.enabled = bool(self.api_key)  # Only enable if API key is provided
@@ -93,7 +94,7 @@ class SMSService:
         This is a placeholder that should be replaced with actual provider integration.
         """
         # For now, just log the SMS (in development mode)
-        if settings.ENVIRONMENT == "development":
+        if get_settings().ENVIRONMENT == "development":
             logger.info(f"[SMS SIMULATION] To: {phone}, From: {sender}, Message: {message}")
             return True
         

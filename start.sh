@@ -37,65 +37,28 @@ fi
 # Create Dockerfiles for each service
 echo "📦 Creating Dockerfiles for services..."
 
-services=("api-gateway" "user-service" "order-service" "inventory-service" "payment-service" "notification-service" "location-service" "websocket-service")
+services=("api-gateway" "user-service" "order-service" "inventory-service" "payment-service" "notification-service" "location-service" "websocket-service" "supplier-onboarding-service" "pricing-service" "review-service" "admin-service")
+
+declare -A service_ports=(
+    ["api-gateway"]=8000
+    ["user-service"]=8001
+    ["order-service"]=8005
+    ["inventory-service"]=8004
+    ["payment-service"]=8008
+    ["notification-service"]=8010
+    ["location-service"]=8003
+    ["websocket-service"]=8012
+    ["supplier-onboarding-service"]=8002
+    ["pricing-service"]=8006
+    ["review-service"]=8009
+    ["admin-service"]=8011
+)
 
 for service in "${services[@]}"; do
     if [ ! -f "$service/Dockerfile" ]; then
         echo "Creating Dockerfile for $service..."
-        cp Dockerfile.template "$service/Dockerfile"
-        
-        # Update port in Dockerfile based on service
-        case $service in
-            "api-gateway")
-                sed -i 's/EXPOSE 8000/EXPOSE 8000/' "$service/Dockerfile"
-                sed -i 's/localhost:8000/localhost:8000/' "$service/Dockerfile"
-                ;;
-            "user-service")
-                sed -i 's/EXPOSE 8000/EXPOSE 8001/' "$service/Dockerfile"
-                sed -i 's/localhost:8000/localhost:8001/' "$service/Dockerfile"
-                ;;
-            "order-service")
-                sed -i 's/EXPOSE 8000/EXPOSE 8005/' "$service/Dockerfile"
-                sed -i 's/localhost:8000/localhost:8005/' "$service/Dockerfile"
-                ;;
-            "inventory-service")
-                sed -i 's/EXPOSE 8000/EXPOSE 8004/' "$service/Dockerfile"
-                sed -i 's/localhost:8000/localhost:8004/' "$service/Dockerfile"
-                ;;
-            "payment-service")
-                sed -i 's/EXPOSE 8000/EXPOSE 8008/' "$service/Dockerfile"
-                sed -i 's/localhost:8000/localhost:8008/' "$service/Dockerfile"
-                ;;
-            "notification-service")
-                sed -i 's/EXPOSE 8000/EXPOSE 8010/' "$service/Dockerfile"
-                sed -i 's/localhost:8000/localhost:8010/' "$service/Dockerfile"
-                ;;
-            "location-service")
-                sed -i 's/EXPOSE 8000/EXPOSE 8003/' "$service/Dockerfile"
-                sed -i 's/localhost:8000/localhost:8003/' "$service/Dockerfile"
-                ;;
-            "websocket-service")
-                sed -i 's/EXPOSE 8000/EXPOSE 8012/' "$service/Dockerfile"
-                sed -i 's/localhost:8000/localhost:8012/' "$service/Dockerfile"
-                ;;
-            "supplier-onboarding-service")
-                sed -i 's/EXPOSE 8000/EXPOSE 8002/' "$service/Dockerfile"
-                sed -i 's/localhost:8000/localhost:8002/' "$service/Dockerfile"
-                ;;
-        esac
-
-        # Update CMD in Dockerfile based on service port
-        case $service in
-            "api-gateway") sed -i 's/--port", "8000"/--port", "8000"/' "$service/Dockerfile" ;;
-            "user-service") sed -i 's/--port", "8000"/--port", "8001"/' "$service/Dockerfile" ;;
-            "location-service") sed -i 's/--port", "8000"/--port", "8003"/' "$service/Dockerfile" ;;
-            "inventory-service") sed -i 's/--port", "8000"/--port", "8004"/' "$service/Dockerfile" ;;
-            "order-service") sed -i 's/--port", "8000"/--port", "8005"/' "$service/Dockerfile" ;;
-            "payment-service") sed -i 's/--port", "8000"/--port", "8008"/' "$service/Dockerfile" ;;
-            "notification-service") sed -i 's/--port", "8000"/--port", "8010"/' "$service/Dockerfile" ;;
-            "websocket-service") sed -i 's/--port", "8000"/--port", "8012"/' "$service/Dockerfile" ;;
-            "supplier-onboarding-service") sed -i 's/--port", "8000"/--port", "8002"/' "$service/Dockerfile" ;;
-        esac
+        port="${service_ports[$service]}"
+        sed "s/{{PORT}}/$port/g" Dockerfile.template > "$service/Dockerfile"
     fi
 done
 
@@ -110,11 +73,35 @@ done
 # Start the platform
 echo "🐳 Starting Docker containers..."
 
-# Build and start services
-docker-compose up --build -d
+# Check if security mode is requested
+if [ "$1" = "--security" ] || [ "$1" = "--production" ]; then
+    echo "🔒 Starting with security enhancements..."
+
+    # Check if security environment file exists
+    if [ ! -f .env.security ]; then
+        echo "⚠️  Security environment file not found. Running security setup..."
+        ./scripts/setup-security.sh
+        echo "📋 Security setup completed. Please review .env.security file."
+        read -p "Press Enter to continue with secure startup..."
+    fi
+
+    # Source security environment
+    set -a
+    source .env.security
+    set +a
+
+    # Build and start services with security compose file
+    docker-compose -f docker-compose.yml -f docker-compose.security.yml up --build -d
+else
+    echo "🚀 Starting in development mode..."
+    echo "💡 For production deployment with security, use: ./start.sh --security"
+
+    # Build and start services (development mode)
+    docker-compose up --build -d
+fi
 
 echo "⏳ Waiting for services to be ready..."
-sleep 30
+sleep 45
 
 # Check service health
 echo "🏥 Checking service health..."
@@ -128,6 +115,10 @@ services_urls=(
     "http://localhost:8010/health|Notification Service"
     "http://localhost:8012/health|WebSocket Service"
     "http://localhost:8002/health|Supplier Onboarding Service"
+    "http://localhost:8006/health|Pricing Service"
+    "http://localhost:8009/health|Review Service"
+    "http://localhost:8011/health|Admin Service"
+    "http://localhost:8003/health|Location Service"
 )
 
 for service_url in "${services_urls[@]}"; do
@@ -152,6 +143,10 @@ echo "   Payment Service:    http://localhost:8008"
 echo "   Notification Service: http://localhost:8010"
 echo "   WebSocket Service:  http://localhost:8012"
 echo "   Supplier Onboarding Service: http://localhost:8002"
+echo "   Pricing Service:     http://localhost:8006"
+echo "   Review Service:      http://localhost:8009"
+echo "   Admin Service:       http://localhost:8011"
+echo "   Location Service:    http://localhost:8003"
 echo ""
 echo "🗄️  Database URLs:"
 echo "   PostgreSQL:         localhost:5432"

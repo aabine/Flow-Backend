@@ -7,18 +7,18 @@ import os
 # Add parent directory to path for shared imports
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))))
 
-from app.core.config import settings
+from app.core.config import get_settings
 
 
 class AuthService:
     def __init__(self):
-        self.user_service_url = settings.USER_SERVICE_URL
+        self.user_service_url = get_settings().USER_SERVICE_URL
     
     async def verify_token(self, token: str) -> Optional[Dict[str, Any]]:
         """Verify JWT token with User Service."""
         try:
             # First try to decode locally
-            payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+            payload = jwt.decode(token, get_settings().SECRET_KEY, algorithms=[get_settings().ALGORITHM])
             
             # Verify with user service
             async with httpx.AsyncClient() as client:

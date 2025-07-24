@@ -20,7 +20,7 @@ Status Tracking: Track onboarding status (pending_verification, verified, reject
 3. **Location Service** (`location-service/`) - Geospatial queries, supplier/hospital locations
 4. **Inventory Service** (`inventory-service/`) - Oxygen cylinder stock management
 5. **Order Service** (`order-service/`) - Order lifecycle management
-6. **Pricing Service** (`pricing-service/`) - Quote management, bidding system
+6. **Pricing Service** (`pricing-service/`) - Quote management, bidding system, supplier price submissions, and quote retrieval.
 7. **Delivery Service** (`delivery-service/`) - Delivery tracking, ETA calculations
 8. **Payment Service** (`payment-service/`) - Paystack integration, split payments
 9. **Review Service** (`review-service/`) - Rating and feedback system
@@ -77,6 +77,7 @@ supplier-onboarding-service/
 - 🚨 **Emergency Orders** - Priority handling for urgent requests
 - 📊 **Analytics Dashboard** - Comprehensive admin insights
 - 🔍 **Multi-supplier Quotes** - Competitive bidding system
+- 🔒 **Production Security** - Enterprise-grade security with SSL, container hardening, and monitoring
 
 ## Quick Start
 
@@ -92,11 +93,27 @@ supplier-onboarding-service/
    ```
 
 3. **Start Services**
+
+   **Development Mode:**
    ```bash
-   # Start all services
+   # Quick start for development
+   ./start.sh
+
+   # Or manually with docker-compose
    docker-compose up -d
-   
-   # Or start individual services
+   ```
+
+   **Production Mode (with Security):**
+   ```bash
+   # Full production deployment with security
+   ./start-production.sh
+
+   # Or manually with both compose files
+   docker-compose -f docker-compose.yml -f docker-compose.security.yml up -d
+   ```
+
+   **Individual Services (Development):**
+   ```bash
    cd user-service && uvicorn main:app --port 8001
    cd order-service && uvicorn main:app --port 8002
    # ... etc
@@ -132,6 +149,64 @@ service-name/
 └── requirements.txt
 ```
 
+## Security & Production Deployment
+
+### 🔒 Production Security Features
+
+The platform includes comprehensive security features for production deployment:
+
+- **SSL/TLS Encryption**: End-to-end encryption with automatic certificate generation
+- **Container Security**: Hardened containers with no-new-privileges, read-only filesystems, and capability dropping
+- **Network Segmentation**: Isolated networks for frontend, backend, database, and admin access
+- **Secret Management**: Secure generation and storage of JWT keys, encryption keys, and passwords
+- **Security Monitoring**: Real-time monitoring with Fluentd and security event logging
+- **Firewall Rules**: Automated iptables configuration for network protection
+- **PCI DSS Compliance**: Payment processing security for Paystack integration
+- **GDPR Compliance**: Data protection and privacy controls
+
+### 🚀 Production Deployment
+
+1. **Quick Production Start:**
+   ```bash
+   ./start-production.sh
+   ```
+
+2. **Manual Production Deployment:**
+   ```bash
+   # Run security setup
+   ./scripts/setup-security.sh
+
+   # Source security environment
+   source .env.security
+
+   # Start with security configurations
+   docker-compose -f docker-compose.yml -f docker-compose.security.yml up -d
+   ```
+
+3. **Security Validation:**
+   ```bash
+   # Run security tests
+   ./scripts/security-validation.sh
+
+   # Monitor security events
+   ./scripts/security-monitor.sh
+   ```
+
+### 🔧 Security Configuration Files
+
+- `docker-compose.security.yml` - Security-enhanced service configurations
+- `.env.security` - Production environment variables (auto-generated)
+- `ssl/` - SSL certificates and keys
+- `nginx/nginx.conf` - Secure reverse proxy configuration
+- `scripts/setup-security.sh` - Security initialization script
+- `scripts/security-validation.sh` - Security testing and validation
+
+### 🌐 Production URLs
+
+- **HTTPS API Gateway**: `https://your-domain.com`
+- **Admin Dashboard**: `https://admin.your-domain.com`
+- **API Documentation**: `https://your-domain.com/docs`
+
 ## API Documentation
 
 Comprehensive API documentation is available at `/docs` for each service and the main gateway.
@@ -147,3 +222,11 @@ Comprehensive API documentation is available at `/docs` for each service and the
 ## License
 
 MIT License - see LICENSE file for details.
+
+## Pricing Service
+
+- **Base URL:** `http://localhost:8009`
+- **Endpoints:**
+  - `GET /health` - Health check
+  - `POST /pricing/quotes` - Create a new quote
+  - `GET /pricing/quotes/{quote_id}` - Retrieve a quote by ID

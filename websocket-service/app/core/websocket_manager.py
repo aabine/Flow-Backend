@@ -12,7 +12,7 @@ import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))))
 
 from shared.models import UserRole
-from .config import settings
+from .config import get_settings
 
 
 class ConnectionInfo:
@@ -45,7 +45,7 @@ class WebSocketManager:
     async def _init_redis(self):
         """Initialize Redis connection for pub/sub."""
         try:
-            self.redis_client = redis.from_url(settings.REDIS_URL)
+            self.redis_client = redis.from_url(get_settings().REDIS_URL)
             await self.redis_client.ping()
             print("Redis connection established for WebSocket service")
         except Exception as e:

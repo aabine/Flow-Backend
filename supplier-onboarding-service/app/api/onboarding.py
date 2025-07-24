@@ -1,7 +1,8 @@
 from fastapi import APIRouter, Depends, UploadFile, File, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List
-from app.schemas.onboarding import SupplierKYC, SupplierKYCResponse, DocumentUploadResponse, SupplierStatusUpdate
+from app.schemas.onboarding import SupplierKYC, SupplierKYCResponse, SupplierStatusUpdate
+from app.schemas.document import DocumentUploadResponse
 from app.services.onboarding_service import OnboardingService
 from app.services.document_service import DocumentService
 from app.core.database import get_db

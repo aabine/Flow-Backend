@@ -13,7 +13,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(
 
 from app.models.order import Order, OrderItem, OrderStatusHistory
 from app.schemas.order import OrderCreate, OrderUpdate
-from app.core.config import settings
+from app.core.config import get_settings
 from shared.models import OrderStatus, UserRole
 from shared.utils import generate_order_reference, calculate_distance_km, calculate_delivery_eta
 
@@ -297,7 +297,7 @@ class OrderService:
             # Check if vendor is available (call inventory service)
             async with httpx.AsyncClient() as client:
                 response = await client.get(
-                    f"{settings.INVENTORY_SERVICE_URL}/vendors/{vendor_id}/availability"
+                    f"{get_settings().INVENTORY_SERVICE_URL}/vendors/{vendor_id}/availability"
                 )
                 if response.status_code == 200:
                     stmt = update(Order).where(Order.id == order_id).values(vendor_id=uuid.UUID(vendor_id))

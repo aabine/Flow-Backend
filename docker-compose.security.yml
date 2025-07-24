@@ -1,0 +1,324 @@
+# Security-enhanced Docker Compose configuration
+# This file extends the main docker-compose.yml with security features
+
+version: '3.8'
+
+services:
+  # API Gateway with security enhancements
+  api-gateway:
+    environment:
+      - ENVIRONMENT=production
+      - ALLOWED_ORIGINS=https://oxygen-platform.com,https://admin.oxygen-platform.com
+      - REDIS_URL=redis://redis:6379
+      - ADMIN_IP_WHITELIST=10.0.0.0/8,172.16.0.0/12,192.168.0.0/16
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY}
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY}
+    networks:
+      - frontend
+      - backend
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp:noexec,nosuid,size=100m
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+    user: "1000:1000"
+    
+  # User Service with security
+  user-service:
+    environment:
+      - DB_SSL_MODE=require
+      - DB_AUDIT_LOGGING=true
+      - REDIS_URL=redis://redis:6379
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY}
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY}
+      - MFA_ISSUER=Oxygen Supply Platform
+    networks:
+      - backend
+      - database
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp:noexec,nosuid,size=100m
+    cap_drop:
+      - ALL
+    user: "1000:1000"
+    
+  # Order Service with security
+  order-service:
+    environment:
+      - DB_SSL_MODE=require
+      - DB_AUDIT_LOGGING=true
+      - PAYMENT_WEBHOOK_SECRET=${PAYSTACK_WEBHOOK_SECRET}
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY}
+    networks:
+      - backend
+      - database
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp:noexec,nosuid,size=100m
+    cap_drop:
+      - ALL
+    user: "1000:1000"
+    
+  # Payment Service with PCI compliance
+  payment-service:
+    environment:
+      - DB_SSL_MODE=require
+      - DB_AUDIT_LOGGING=true
+      - PAYSTACK_SECRET_KEY=${PAYSTACK_SECRET_KEY}
+      - PAYSTACK_WEBHOOK_SECRET=${PAYSTACK_WEBHOOK_SECRET}
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY}
+      - PCI_COMPLIANCE_MODE=true
+    networks:
+      - backend
+      - database
+      - payment-network
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp:noexec,nosuid,size=100m
+    cap_drop:
+      - ALL
+    user: "1000:1000"
+    
+  # Inventory Service with security
+  inventory-service:
+    environment:
+      - DB_SSL_MODE=require
+      - DB_AUDIT_LOGGING=true
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY}
+    networks:
+      - backend
+      - database
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp:noexec,nosuid,size=100m
+    cap_drop:
+      - ALL
+    user: "1000:1000"
+    
+  # Pricing Service with security
+  pricing-service:
+    environment:
+      - DB_SSL_MODE=require
+      - DB_AUDIT_LOGGING=true
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY}
+    networks:
+      - backend
+      - database
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp:noexec,nosuid,size=100m
+    cap_drop:
+      - ALL
+    user: "1000:1000"
+    
+  # Admin Service with enhanced security
+  admin-service:
+    environment:
+      - DB_SSL_MODE=require
+      - DB_AUDIT_LOGGING=true
+      - ADMIN_IP_WHITELIST=${ADMIN_IP_WHITELIST}
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY}
+      - REQUIRE_MFA=true
+    networks:
+      - backend
+      - database
+      - admin-network
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp:noexec,nosuid,size=100m
+    cap_drop:
+      - ALL
+    user: "1000:1000"
+    
+  # PostgreSQL with security
+  postgres:
+    environment:
+      - POSTGRES_SSL_MODE=on
+      - POSTGRES_LOG_STATEMENT=all
+      - POSTGRES_LOG_CONNECTIONS=on
+      - POSTGRES_LOG_DISCONNECTIONS=on
+      - POSTGRES_LOG_CHECKPOINTS=on
+    volumes:
+      - postgres_data:/var/lib/postgresql/data:Z
+      - ./ssl/postgres:/var/lib/postgresql/ssl:ro
+    networks:
+      - database
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
+      - SETGID
+      - SETUID
+    user: "999:999"
+    
+  # Redis with security
+  redis:
+    command: >
+      redis-server
+      --requirepass ${REDIS_PASSWORD}
+      --appendonly yes
+      --appendfsync everysec
+      --maxmemory 256mb
+      --maxmemory-policy allkeys-lru
+      --tcp-keepalive 60
+      --timeout 300
+    volumes:
+      - redis_data:/data:Z
+    networks:
+      - backend
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    user: "999:999"
+    
+  # RabbitMQ with security
+  rabbitmq:
+    environment:
+      - RABBITMQ_DEFAULT_USER=${RABBITMQ_USER}
+      - RABBITMQ_DEFAULT_PASS=${RABBITMQ_PASSWORD}
+      - RABBITMQ_SSL_CERTFILE=/etc/rabbitmq/ssl/cert.pem
+      - RABBITMQ_SSL_KEYFILE=/etc/rabbitmq/ssl/key.pem
+      - RABBITMQ_SSL_CACERTFILE=/etc/rabbitmq/ssl/ca.pem
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq:Z
+      - ./ssl/rabbitmq:/etc/rabbitmq/ssl:ro
+    networks:
+      - backend
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    user: "999:999"
+    
+  # Nginx reverse proxy with SSL termination
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "443:443"
+      - "80:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./ssl/nginx:/etc/nginx/ssl:ro
+      - ./nginx/security.conf:/etc/nginx/conf.d/security.conf:ro
+    networks:
+      - frontend
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+    user: "101:101"
+    depends_on:
+      - api-gateway
+    
+  # Security monitoring and logging
+  security-monitor:
+    image: fluent/fluentd:latest
+    volumes:
+      - ./fluentd/fluent.conf:/fluentd/etc/fluent.conf:ro
+      - /var/log:/var/log:ro
+    networks:
+      - monitoring
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    user: "100:101"
+
+# Secure network configuration
+networks:
+  frontend:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/24
+    driver_opts:
+      com.docker.network.bridge.enable_icc: "false"
+      com.docker.network.bridge.enable_ip_masquerade: "true"
+      
+  backend:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.21.0.0/24
+    driver_opts:
+      com.docker.network.bridge.enable_icc: "true"
+      com.docker.network.bridge.enable_ip_masquerade: "false"
+      
+  database:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.22.0.0/24
+    driver_opts:
+      com.docker.network.bridge.enable_icc: "true"
+      com.docker.network.bridge.enable_ip_masquerade: "false"
+      
+  payment-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.23.0.0/24
+    driver_opts:
+      com.docker.network.bridge.enable_icc: "false"
+      com.docker.network.bridge.enable_ip_masquerade: "true"
+      
+  admin-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.24.0.0/24
+    driver_opts:
+      com.docker.network.bridge.enable_icc: "false"
+      com.docker.network.bridge.enable_ip_masquerade: "true"
+      
+  monitoring:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.25.0.0/24
+
+# Secure volume configuration
+volumes:
+  postgres_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind,uid=999,gid=999,mode=0700
+      device: /var/lib/oxygen-platform/postgres
+      
+  redis_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind,uid=999,gid=999,mode=0700
+      device: /var/lib/oxygen-platform/redis
+      
+  rabbitmq_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind,uid=999,gid=999,mode=0700
+      device: /var/lib/oxygen-platform/rabbitmq

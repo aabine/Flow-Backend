@@ -13,7 +13,9 @@ import sys
 # Add parent directory to path for shared imports
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from app.core.config import settings
+from app.core.config import get_settings
+
+settings = get_settings()
 from app.core.websocket_manager import WebSocketManager
 from app.services.auth_service import AuthService
 from app.services.event_service import EventService

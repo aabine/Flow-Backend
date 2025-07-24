@@ -73,6 +73,8 @@ services:
       - order-service
       - inventory-service
       - payment-service
+      - review-service
+      - admin-service
       - notification-service
       - websocket-service
     networks:
@@ -87,7 +89,7 @@ services:
     ports:
       - "8001:8001"
     environment:
-      - DATABASE_URL=postgresql://user:password@postgres:5432/oxygen_platform
+      - DATABASE_URL=postgresql+asyncpg://user:password@postgres:5432/oxygen_platform
       - REDIS_URL=redis://redis:6379/0
     depends_on:
       - postgres
@@ -103,7 +105,7 @@ services:
     ports:
       - "8005:8005"
     environment:
-      - DATABASE_URL=postgresql://user:password@postgres:5432/oxygen_platform
+      - DATABASE_URL=postgresql+asyncpg://user:password@postgres:5432/oxygen_platform
       - REDIS_URL=redis://redis:6379/0
       - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672/
       - INVENTORY_SERVICE_URL=http://inventory-service:8004
@@ -125,9 +127,10 @@ services:
     ports:
       - "8004:8004"
     environment:
-      - DATABASE_URL=postgresql://user:password@postgres:5432/oxygen_platform
+      - DATABASE_URL=postgresql+asyncpg://user:password@postgres:5432/oxygen_platform
       - REDIS_URL=redis://redis:6379/0
       - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672/
+      - WEBSOCKET_SERVICE_URL=http://websocket-service:8012
     depends_on:
       - postgres
       - redis
@@ -143,7 +146,7 @@ services:
     ports:
       - "8008:8008"
     environment:
-      - DATABASE_URL=postgresql://user:password@postgres:5432/oxygen_platform
+      - DATABASE_URL=postgresql+asyncpg://user:password@postgres:5432/oxygen_platform
       - REDIS_URL=redis://redis:6379/0
       - PAYSTACK_SECRET_KEY=${PAYSTACK_SECRET_KEY}
       - PAYSTACK_PUBLIC_KEY=${PAYSTACK_PUBLIC_KEY}
@@ -162,7 +165,7 @@ services:
     ports:
       - "8003:8003"
     environment:
-      - DATABASE_URL=postgresql://user:password@postgres:5432/oxygen_platform
+      - DATABASE_URL=postgresql+asyncpg://user:password@postgres:5432/oxygen_platform
       - REDIS_URL=redis://redis:6379/0
       - WEBSOCKET_SERVICE_URL=http://websocket-service:8012
     depends_on:
@@ -179,7 +182,7 @@ services:
     ports:
       - "8010:8010"
     environment:
-      - DATABASE_URL=postgresql://user:password@postgres:5432/oxygen_platform
+      - DATABASE_URL=postgresql+asyncpg://user:password@postgres:5432/oxygen_platform
       - REDIS_URL=redis://redis:6379/0
       - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672/
       - WEBSOCKET_SERVICE_URL=http://websocket-service:8012
@@ -226,11 +229,108 @@ services:
     ports:
       - "8002:8002"
     environment:
-      - DATABASE_URL=postgresql://user:password@postgres:5432/oxygen_platform
+      - DATABASE_URL=postgresql+asyncpg://user:password@postgres:5432/oxygen_platform
     depends_on:
       - postgres
     networks:
       - oxygen-network
+
+  pricing-service:
+    build:
+      context: .
+      dockerfile: ./pricing-service/Dockerfile
+    working_dir: /app/pricing-service
+    container_name: flow-backend_pricing-service
+    ports:
+      - "8006:8006"
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://user:password@postgres:5432/oxygen_platform
+      - SECRET_KEY=your-secret-key-here-change-in-production
+    depends_on:
+      - postgres
+    networks:
+      - oxygen-network
+
+
+  review-service:
+    build:
+      context: .
+      dockerfile: ./review-service/Dockerfile
+    working_dir: /app/review-service
+    ports:
+      - "8009:8009"
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://user:password@postgres:5432/oxygen_platform
+      - REDIS_URL=redis://redis:6379/0
+      - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672/
+      - USER_SERVICE_URL=http://user-service:8001
+      - ORDER_SERVICE_URL=http://order-service:8005
+      - NOTIFICATION_SERVICE_URL=http://notification-service:8010
+    depends_on:
+      - postgres
+      - redis
+      - rabbitmq
+    networks:
+      - oxygen-network
+
+  admin-service:
+    build:
+      context: .
+      dockerfile: ./admin-service/Dockerfile
+    working_dir: /app/admin-service
+    ports:
+      - "8011:8011"
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://user:password@postgres:5432/oxygen_platform
+      - REDIS_URL=redis://redis:6379/0
+      - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672/
+      - USER_SERVICE_URL=http://user-service:8001
+      - ORDER_SERVICE_URL=http://order-service:8005
+      - INVENTORY_SERVICE_URL=http://inventory-service:8004
+      - PAYMENT_SERVICE_URL=http://payment-service:8008
+      - REVIEW_SERVICE_URL=http://review-service:8009
+      - NOTIFICATION_SERVICE_URL=http://notification-service:8010
+      - LOCATION_SERVICE_URL=http://location-service:8003
+      - PRICING_SERVICE_URL=http://pricing-service:8006
+      - SUPPLIER_ONBOARDING_SERVICE_URL=http://supplier-onboarding-service:8002
+    depends_on:
+      - postgres
+      - redis
+      - rabbitmq
+      - user-service
+      - order-service
+      - payment-service
+      - review-service
+    networks:
+      - oxygen-network
+
+  delivery-service:
+    build:
+      context: .
+      dockerfile: ./delivery-service/Dockerfile
+    working_dir: /app/delivery-service
+    container_name: flow-backend_delivery-service
+    ports:
+      - "8007:8007"
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://user:password@postgres:5432/oxygen_platform
+      - SECRET_KEY=your-secret-key-here-change-in-production
+      - REDIS_URL=redis://redis:6379/0
+      - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672/
+      - USER_SERVICE_URL=http://user-service:8001
+      - ORDER_SERVICE_URL=http://order-service:8005
+      - LOCATION_SERVICE_URL=http://location-service:8003
+      - NOTIFICATION_SERVICE_URL=http://notification-service:8010
+      - WEBSOCKET_SERVICE_URL=http://websocket-service:8012
+      - INVENTORY_SERVICE_URL=http://inventory-service:8004
+    depends_on:
+      - postgres
+      - redis
+      - rabbitmq
+    networks:
+      - oxygen-network
+
+
 
 volumes:
   postgres_data:

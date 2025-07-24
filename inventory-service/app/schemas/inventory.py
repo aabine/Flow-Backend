@@ -153,3 +153,74 @@ class StockReservationResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+# Additional schemas for API compatibility
+class InventoryLocationCreate(BaseModel):
+    name: str
+    address: str
+    city: str
+    state: str
+    country: str = "Nigeria"
+    latitude: float = Field(..., ge=-90, le=90)
+    longitude: float = Field(..., ge=-180, le=180)
+
+
+class InventoryLocationResponse(BaseModel):
+    id: str
+    name: str
+    address: str
+    city: str
+    state: str
+    country: str
+    latitude: float
+    longitude: float
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class InventoryFilters(BaseModel):
+    vendor_id: Optional[str] = None
+    location_id: Optional[str] = None
+    cylinder_size: Optional[CylinderSize] = None
+    low_stock_only: Optional[bool] = False
+    available_only: Optional[bool] = False
+
+
+class PaginatedInventoryResponse(BaseModel):
+    items: List[InventoryResponse]
+    total: int
+    page: int
+    size: int
+    pages: int
+
+
+class StockAdjustment(BaseModel):
+    cylinder_size: CylinderSize
+    adjustment_type: str  # 'add' or 'remove'
+    quantity: int = Field(..., gt=0)
+    reason: Optional[str] = None
+
+
+class BulkStockUpdate(BaseModel):
+    updates: List[dict]  # List of stock updates
+    reason: Optional[str] = None
+
+
+class StockMovementFilters(BaseModel):
+    inventory_id: Optional[str] = None
+    movement_type: Optional[str] = None
+    cylinder_size: Optional[CylinderSize] = None
+    order_id: Optional[str] = None
+    date_from: Optional[datetime] = None
+    date_to: Optional[datetime] = None
+
+
+class PaginatedStockMovementResponse(BaseModel):
+    items: List[StockMovementResponse]
+    total: int
+    page: int
+    size: int
+    pages: int

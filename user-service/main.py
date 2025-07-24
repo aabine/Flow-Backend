@@ -9,7 +9,7 @@ import sys
 # Add parent directory to path for shared imports
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from app.core.config import settings
+from app.core.config import get_settings
 from app.core.security import create_access_token, verify_token, get_password_hash, verify_password
 from app.core.database import get_db
 from app.models.user import User, UserProfile
@@ -116,7 +116,7 @@ async def login(login_data: UserLogin, db: AsyncSession = Depends(get_db)):
         return TokenResponse(
             access_token=access_token,
             token_type="bearer",
-            expires_in=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+            expires_in=get_settings().ACCESS_TOKEN_EXPIRE_MINUTES * 60,
             user=UserResponse(
                 id=str(user.id),
                 email=user.email,

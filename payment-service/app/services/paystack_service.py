@@ -8,12 +8,13 @@ import os
 # Add parent directory to path for shared imports
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))))
 
-from app.core.config import settings
+from app.core.config import get_settings
 
 
 class PaystackService:
     def __init__(self):
         self.base_url = "https://api.paystack.co"
+        settings = get_settings()
         self.secret_key = settings.PAYSTACK_SECRET_KEY
         self.public_key = settings.PAYSTACK_PUBLIC_KEY
 

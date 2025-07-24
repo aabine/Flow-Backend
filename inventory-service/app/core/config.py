@@ -1,6 +1,7 @@
 from pydantic_settings import BaseSettings
 from typing import Optional
 import os
+from functools import lru_cache
 
 
 class Settings(BaseSettings):
@@ -21,9 +22,17 @@ class Settings(BaseSettings):
     
     # Inventory Service Specific
     INVENTORY_SERVICE_PORT: int = int(os.getenv("INVENTORY_SERVICE_PORT", "8004"))
-    
+
+    # Service URLs
+    WEBSOCKET_SERVICE_URL: str = os.getenv("WEBSOCKET_SERVICE_URL", "http://localhost:8012")
+
+    # RabbitMQ
+    RABBITMQ_URL: str = os.getenv("RABBITMQ_URL", "amqp://guest:guest@localhost:5672/")
+
     class Config:
         env_file = ".env"
 
 
-settings = Settings()
+@lru_cache()
+def get_settings() -> Settings:
+    return Settings()

@@ -10,7 +10,7 @@ import hashlib
 from contextlib import asynccontextmanager
 
 
-from app.core.config import settings
+from app.core.config import get_settings
 from app.core.database import get_db
 from app.models.payment import Payment, PaymentSplit, PaymentWebhook
 from app.schemas.payment import (
@@ -111,7 +111,7 @@ async def initialize_payment(
             email=current_user.get("email", ""),
             amount=payment_data.amount,
             reference=payment.reference,
-            callback_url=f"{settings.FRONTEND_URL}/payment/callback"
+            callback_url=f"{get_settings().FRONTEND_URL}/payment/callback"
         )
         
         # Update payment with Paystack data
@@ -261,7 +261,7 @@ async def paystack_webhook(request: Request, db: AsyncSession = Depends(get_db))
         
         # Verify signature
         expected_signature = hmac.new(
-            settings.PAYSTACK_SECRET_KEY.encode(),
+            get_settings().PAYSTACK_SECRET_KEY.encode(),
             body,
             hashlib.sha512
         ).hexdigest()
@@ -453,7 +453,6 @@ async def get_platform_revenue(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to get platform revenue: {str(e)}"
         )
-
 
 if __name__ == "__main__":
     import uvicorn
