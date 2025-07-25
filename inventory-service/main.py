@@ -25,25 +25,6 @@ from app.api.stock_movements import router as stock_movements_router
 from app.services.event_service import event_service
 from shared.models import APIResponse
 
-app = FastAPI(
-    title="Inventory Service",
-    description="Oxygen cylinder inventory management service",
-    version="1.0.0",
-    lifespan=lifespan
-)
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-# Include API routers
-app.include_router(inventory_router, prefix="/inventory", tags=["inventory"])
-app.include_router(stock_movements_router, prefix="/stock-movements", tags=["stock-movements"])
-
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -76,6 +57,29 @@ async def lifespan(app: FastAPI):
         logger.warning(f"⚠️ Error stopping event service: {e}")
 
     logger.info("👋 Inventory Service shutdown completed")
+
+
+app = FastAPI(
+    title="Inventory Service",
+    description="Oxygen cylinder inventory management service",
+    version="1.0.0",
+    lifespan=lifespan
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Include API routers
+app.include_router(inventory_router, prefix="/inventory", tags=["inventory"])
+app.include_router(stock_movements_router, prefix="/stock-movements", tags=["stock-movements"])
+
+
+
 
 @app.get("/")
 async def root():

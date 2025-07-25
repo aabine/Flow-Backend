@@ -1,4 +1,4 @@
-from pydantic import BaseModel, EmailStr, Field, pattern
+from pydantic import BaseModel, EmailStr, Field
 from typing import Optional
 from datetime import datetime
 import sys

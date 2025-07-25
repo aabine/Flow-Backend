@@ -14,7 +14,7 @@ import os
 # Add parent directory to path for shared imports
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))))
 
-from app.services.rate_limit_service import rate_limit_service
+from app.services.rate_limit_service import RateLimitService, RateLimitConfig
 
 
 class RateLimitMiddleware(BaseHTTPMiddleware):
@@ -30,9 +30,9 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         auth_header = request.headers.get("Authorization")
         if auth_header and auth_header.startswith("Bearer "):
             try:
-                from app.core.security import verify_token
+                from app.core.security import JWTManager
                 token = auth_header.split(" ")[1]
-                payload = verify_token(token)
+                payload = JWTManager().verify_token(token)
                 user_id = payload.get("user_id")
                 if user_id:
                     return f"user:{user_id}"
@@ -65,11 +65,11 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         client_id = self.get_client_identifier(request)
         
         # Check API rate limit
-        is_allowed, current_count, remaining = await rate_limit_service.check_api_rate_limit(client_id)
+        is_allowed, current_count, remaining = await RateLimitService().check_api_rate_limit(client_id)
         
         if not is_allowed:
             # Get rate limit info for headers
-            rate_info = await rate_limit_service.get_rate_limit_info("api", client_id)
+            rate_info = await RateLimitService().get_rate_limit_info("api", client_id)
             
             response = JSONResponse(
                 status_code=status.HTTP_429_TOO_MANY_REQUESTS,
@@ -89,7 +89,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             return self.add_security_headers(response)
         
         # Increment request counter
-        await rate_limit_service.increment_api_requests(client_id)
+        await RateLimitService().increment_api_requests(client_id)
         
         # Process request
         try:
@@ -107,7 +107,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         
         # Add rate limit headers to successful responses
         if response.status_code < 400:
-            rate_info = await rate_limit_service.get_rate_limit_info("api", client_id)
+            rate_info = await RateLimitService().get_rate_limit_info("api", client_id)
             response.headers["X-RateLimit-Limit"] = str(rate_info["limit"])
             response.headers["X-RateLimit-Remaining"] = str(rate_info["remaining"])
             response.headers["X-RateLimit-Reset"] = str(int(rate_info["reset_time"].timestamp()) if rate_info["reset_time"] else 0)
@@ -152,7 +152,7 @@ class LoginRateLimitMiddleware:
             client_ip = request.client.host
         
         # Check IP-based rate limit
-        ip_allowed, ip_count, ip_remaining = await rate_limit_service.check_login_rate_limit(f"ip:{client_ip}")
+        ip_allowed, ip_count, ip_remaining = await RateLimitService().check_login_rate_limit(f"ip:{client_ip}")
         
         if not ip_allowed:
             raise HTTPException(
@@ -160,7 +160,7 @@ class LoginRateLimitMiddleware:
                 detail="Too many login attempts from this IP address. Please try again later.",
                 headers={
                     "Retry-After": "900",  # 15 minutes
-                    "X-RateLimit-Limit": str(rate_limit_service.config.LOGIN_MAX_ATTEMPTS),
+                    "X-RateLimit-Limit": str(RateLimitService().config.LOGIN_MAX_ATTEMPTS),
                     "X-RateLimit-Remaining": str(ip_remaining)
                 }
             )
@@ -175,7 +175,7 @@ class LoginRateLimitMiddleware:
                     email = data.get("email")
                     
                     if email:
-                        email_allowed, email_count, email_remaining = await rate_limit_service.check_login_rate_limit(f"email:{email}")
+                        email_allowed, email_count, email_remaining = await RateLimitService().check_login_rate_limit(f"email:{email}")
                         
                         if not email_allowed:
                             raise HTTPException(
@@ -183,7 +183,7 @@ class LoginRateLimitMiddleware:
                                 detail="Too many login attempts for this email. Please try again later.",
                                 headers={
                                     "Retry-After": "900",  # 15 minutes
-                                    "X-RateLimit-Limit": str(rate_limit_service.config.LOGIN_MAX_ATTEMPTS),
+                                    "X-RateLimit-Limit": str(RateLimitService().config.LOGIN_MAX_ATTEMPTS),
                                     "X-RateLimit-Remaining": str(email_remaining)
                                 }
                             )
@@ -206,7 +206,7 @@ class PasswordResetRateLimitMiddleware:
             client_ip = request.client.host
         
         # Check IP-based rate limit
-        ip_allowed, ip_count, ip_remaining = await rate_limit_service.check_password_reset_rate_limit(f"ip:{client_ip}")
+        ip_allowed, ip_count, ip_remaining = await RateLimitService().check_password_reset_rate_limit(f"ip:{client_ip}")
         
         if not ip_allowed:
             raise HTTPException(
@@ -214,7 +214,7 @@ class PasswordResetRateLimitMiddleware:
                 detail="Too many password reset attempts. Please try again later.",
                 headers={
                     "Retry-After": "3600",  # 1 hour
-                    "X-RateLimit-Limit": str(rate_limit_service.config.PASSWORD_RESET_MAX_ATTEMPTS),
+                    "X-RateLimit-Limit": str(RateLimitService().config.PASSWORD_RESET_MAX_ATTEMPTS),
                     "X-RateLimit-Remaining": str(ip_remaining)
                 }
             )
@@ -234,7 +234,7 @@ class EmailVerificationRateLimitMiddleware:
             client_ip = request.client.host
         
         # Check IP-based rate limit
-        ip_allowed, ip_count, ip_remaining = await rate_limit_service.check_email_verification_rate_limit(f"ip:{client_ip}")
+        ip_allowed, ip_count, ip_remaining = await RateLimitService().check_email_verification_rate_limit(f"ip:{client_ip}")
         
         if not ip_allowed:
             raise HTTPException(
@@ -242,7 +242,7 @@ class EmailVerificationRateLimitMiddleware:
                 detail="Too many email verification attempts. Please try again later.",
                 headers={
                     "Retry-After": "3600",  # 1 hour
-                    "X-RateLimit-Limit": str(rate_limit_service.config.EMAIL_VERIFICATION_MAX_ATTEMPTS),
+                    "X-RateLimit-Limit": str(RateLimitService().config.EMAIL_VERIFICATION_MAX_ATTEMPTS),
                     "X-RateLimit-Remaining": str(ip_remaining)
                 }
             )

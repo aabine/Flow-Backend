@@ -13,8 +13,8 @@ import os
 # Add parent directory to path for shared imports
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))))
 
-from app.services.api_key_service import api_key_service, APIKeyPermission
-from app.database import get_db
+from app.services.api_key_service import APIKeyService, APIKeyPermission
+from app.core.database import get_db
 
 
 class APIKeyAuth:
@@ -50,7 +50,7 @@ class APIKeyAuth:
             )
         
         # Validate API key
-        key_info = await api_key_service.validate_api_key(
+        key_info = await APIKeyService().validate_api_key(
             db, api_key, self.required_permission
         )
         
@@ -125,7 +125,7 @@ async def validate_service_request(
     if not api_key:
         return None
     
-    return await api_key_service.validate_api_key(db, api_key, required_permission)
+    return await APIKeyService().validate_api_key(db, api_key, required_permission)
 
 
 class APIKeyMiddleware:
@@ -155,7 +155,7 @@ class APIKeyMiddleware:
                 detail="API key required for this endpoint"
             )
         
-        key_info = await api_key_service.validate_api_key(db, api_key)
+        key_info = await APIKeyService().validate_api_key(db, api_key)
         if not key_info:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
@@ -184,7 +184,7 @@ async def authenticate_service_call(
             detail="Service authentication required"
         )
     
-    key_info = await api_key_service.validate_api_key(db, api_key, required_permission)
+    key_info = await APIKeyService().validate_api_key(db, api_key, required_permission)
     if not key_info:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,

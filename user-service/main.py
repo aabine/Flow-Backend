@@ -1,11 +1,18 @@
-from fastapi import FastAPI, HTTPException, Depends, status, Query
+from fastapi import FastAPI, HTTPException, Depends, status, Query, Request, UploadFile
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Optional
+from pydantic import BaseModel
 from datetime import datetime, timedelta
+from jose import jwt
+from pyotp import TOTP
 import os
 import sys
+import logging
+import secrets
+
 
 # Add parent directory to path for shared imports
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -234,16 +241,14 @@ async def login(
         # Check if MFA is required
         if user.mfa_enabled:
             # Create temporary MFA token
-            from jose import jwt
-            from datetime import timedelta
-
-            mfa_expire = datetime.utcnow() + timedelta(minutes=5)  # 5 minute expiry
+            mfa_expire = datetime.now(datetime.timezone.utc) + timedelta(minutes=5)  # 5 minute expiry
             mfa_payload = {
                 "user_id": str(user.id),
                 "type": "mfa",
                 "exp": mfa_expire,
-                "iat": datetime.utcnow()
+                "iat": datetime.now(datetime.timezone.utc)
             }
+            settings = get_settings()
 
             mfa_token = jwt.encode(mfa_payload, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
 
@@ -1599,9 +1604,9 @@ async def export_user_data(
             message="Data export generated successfully",
             data={
                 "export_size_bytes": len(export_data),
-                "export_date": datetime.utcnow().isoformat(),
+                "export_date": datetime.now(datetime.timezone.utc).isoformat(),
                 "download_data": encoded_data,  # Base64 encoded ZIP file
-                "filename": f"user_data_export_{user_id}_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.zip"
+                "filename": f"user_data_export_{user_id}_{datetime.now(datetime.timezone.utc).strftime('%Y%m%d_%H%M%S')}.zip"
             }
         )
 
