@@ -24,6 +24,7 @@ class Settings(BaseSettings):
 
     # RabbitMQ Configuration
     RABBITMQ_URL: str = Field("amqp://guest:guest@localhost:5672/", env="RABBITMQ_URL")
+    RABBITMQ_REQUIRED: bool = Field(False, env="RABBITMQ_REQUIRED")
 
     # External Service URLs
     USER_SERVICE_URL: str = Field("http://localhost:8001", env="USER_SERVICE_URL")

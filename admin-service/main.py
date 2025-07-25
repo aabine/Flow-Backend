@@ -5,6 +5,14 @@ from datetime import datetime
 import asyncio
 import sys
 import os
+import logging
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 
 # Add parent directory to path for shared imports
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -24,26 +32,42 @@ monitoring_service = SystemMonitoringService()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
-    print("Starting Admin Service...")
-    
-    # Initialize database
-    await init_db()
-    print("Database initialized")
-    
-    # Start event listener service
-    await event_listener.start_listening()
-    print("Event listener started")
-    
-    # Start background tasks
-    asyncio.create_task(metrics_collection_task())
-    print("Background tasks started")
-    
+    logger.info("🚀 Starting Admin Service...")
+
+    try:
+        # Initialize database
+        await init_db()
+        logger.info("✅ Database initialized")
+
+        # Start event listener service (graceful startup)
+        try:
+            await event_listener.start_listening()
+            logger.info("✅ Event listener service started")
+        except Exception as e:
+            logger.warning(f"⚠️ Event listener startup warning: {e}")
+            logger.info("📝 Admin service will continue without RabbitMQ")
+
+        # Start background tasks
+        asyncio.create_task(metrics_collection_task())
+        logger.info("✅ Background tasks started")
+
+        logger.info("🎉 Admin Service startup completed successfully!")
+
+    except Exception as e:
+        logger.error(f"❌ Critical error during Admin Service startup: {e}")
+        raise
+
     yield
-    
+
     # Shutdown
-    print("Shutting down Admin Service...")
-    await event_listener.stop_listening()
-    print("Event listener stopped")
+    logger.info("🛑 Shutting down Admin Service...")
+    try:
+        await event_listener.stop_listening()
+        logger.info("✅ Event listener stopped")
+    except Exception as e:
+        logger.warning(f"⚠️ Error stopping event listener: {e}")
+
+    logger.info("👋 Admin Service shutdown completed")
 
 
 async def metrics_collection_task():
@@ -99,12 +123,33 @@ async def root():
 
 @app.get("/health")
 async def health_check():
-    """Health check endpoint."""
+    """Enhanced health check endpoint with dependency status."""
+
+    # Get RabbitMQ connection status
+    rabbitmq_status = event_listener.get_connection_status()
+
+    # Determine overall health
+    is_healthy = True
+    issues = []
+
+    if not rabbitmq_status["connected"]:
+        issues.append("RabbitMQ connection unavailable")
+        # Note: We don't mark as unhealthy since service can run without RabbitMQ
+
     return {
-        "status": "healthy",
+        "status": "healthy" if is_healthy else "degraded",
         "service": "Admin Service",
         "version": "1.0.0",
-        "timestamp": datetime.utcnow().isoformat()
+        "timestamp": datetime.utcnow().isoformat(),
+        "dependencies": {
+            "rabbitmq": {
+                "status": rabbitmq_status["state"],
+                "connected": rabbitmq_status["connected"],
+                "pending_events": rabbitmq_status["pending_events"],
+                "url": rabbitmq_status["rabbitmq_url"]
+            }
+        },
+        "issues": issues
     }
 
 

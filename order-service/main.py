@@ -1,10 +1,19 @@
 from fastapi import FastAPI, HTTPException, Depends, status, Header
 from fastapi.middleware.cors import CORSMiddleware
+from contextlib import asynccontextmanager
 from sqlalchemy.ext.asyncio import AsyncSession
 from datetime import datetime
 from typing import Optional, List
 import os
 import sys
+import logging
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 
 # Add parent directory to path for shared imports
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -17,10 +26,44 @@ from app.services.order_service import OrderService
 from app.services.event_service import EventService
 from shared.models import OrderStatus, APIResponse, UserRole
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup
+    logger.info("🚀 Starting Order Service...")
+
+    try:
+        # Start event service (graceful startup)
+        try:
+            await event_service.connect()
+            logger.info("✅ Event service started")
+        except Exception as e:
+            logger.warning(f"⚠️ Event service startup warning: {e}")
+            logger.info("📝 Order service will continue without RabbitMQ")
+
+        logger.info("🎉 Order Service startup completed successfully!")
+
+    except Exception as e:
+        logger.error(f"❌ Critical error during Order Service startup: {e}")
+        raise
+
+    yield
+
+    # Shutdown
+    logger.info("🛑 Shutting down Order Service...")
+    try:
+        await event_service.disconnect()
+        logger.info("✅ Event service stopped")
+    except Exception as e:
+        logger.warning(f"⚠️ Error stopping event service: {e}")
+
+    logger.info("👋 Order Service shutdown completed")
+
+
 app = FastAPI(
     title="Order Service",
     description="Order management and lifecycle service",
-    version="1.0.0"
+    version="1.0.0",
+    lifespan=lifespan
 )
 
 app.add_middleware(
@@ -60,10 +103,33 @@ async def root():
 
 @app.get("/health")
 async def health_check():
-    """Health check endpoint."""
+    """Enhanced health check endpoint with dependency status."""
+
+    # Get RabbitMQ connection status
+    rabbitmq_status = event_service.get_connection_status()
+
+    # Determine overall health
+    is_healthy = True
+    issues = []
+
+    if not rabbitmq_status["connected"]:
+        issues.append("RabbitMQ connection unavailable")
+        # Note: We don't mark as unhealthy since service can run without RabbitMQ
+
     return {
-        "status": "healthy",
-        "timestamp": datetime.utcnow().isoformat()
+        "status": "healthy" if is_healthy else "degraded",
+        "service": "Order Service",
+        "version": "1.0.0",
+        "timestamp": datetime.utcnow().isoformat(),
+        "dependencies": {
+            "rabbitmq": {
+                "status": rabbitmq_status["state"],
+                "connected": rabbitmq_status["connected"],
+                "pending_events": rabbitmq_status["pending_events"],
+                "url": rabbitmq_status["rabbitmq_url"]
+            }
+        },
+        "issues": issues
     }
 
 

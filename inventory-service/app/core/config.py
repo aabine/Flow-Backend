@@ -28,6 +28,7 @@ class Settings(BaseSettings):
 
     # RabbitMQ
     RABBITMQ_URL: str = os.getenv("RABBITMQ_URL", "amqp://guest:guest@localhost:5672/")
+    RABBITMQ_REQUIRED: bool = os.getenv("RABBITMQ_REQUIRED", "false").lower() == "true"
 
     class Config:
         env_file = ".env"

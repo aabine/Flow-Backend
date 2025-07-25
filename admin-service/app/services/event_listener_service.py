@@ -1,11 +1,13 @@
 import json
 import asyncio
 import aio_pika
-from typing import Dict, Any, Callable
+from typing import Dict, Any, Callable, Optional
 from datetime import datetime
 from sqlalchemy.ext.asyncio import AsyncSession
 import sys
 import os
+import logging
+from enum import Enum
 
 # Add parent directory to path for shared imports
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))))
@@ -16,14 +18,36 @@ from app.models.admin import SystemMetrics, SystemAlert, MetricType
 from app.services.system_monitoring_service import SystemMonitoringService
 
 settings = get_settings()
+logger = logging.getLogger(__name__)
+
+
+class ConnectionState(Enum):
+    """RabbitMQ connection states."""
+    DISCONNECTED = "disconnected"
+    CONNECTING = "connecting"
+    CONNECTED = "connected"
+    FAILED = "failed"
 
 
 class EventListenerService:
+    """
+    Resilient service for listening to events from other microservices.
+    Handles RabbitMQ connection failures gracefully and provides fallback mechanisms.
+    """
+
     def __init__(self):
         self.settings = settings
-        self.connection = None
-        self.channel = None
+        self.connection: Optional[aio_pika.Connection] = None
+        self.channel: Optional[aio_pika.Channel] = None
+        self.exchange: Optional[aio_pika.Exchange] = None
         self.monitoring_service = SystemMonitoringService()
+        self.connection_state = ConnectionState.DISCONNECTED
+        self.reconnect_task: Optional[asyncio.Task] = None
+        self.max_retries = 5
+        self.retry_delay = 5  # seconds
+        self.is_running = False
+
+        # Event handlers mapping
         self.event_handlers = {
             "order.created": self._handle_order_created,
             "order.completed": self._handle_order_completed,
@@ -37,27 +61,154 @@ class EventListenerService:
             "service.health_check": self._handle_service_health_check,
         }
 
+        # Fallback event storage for when RabbitMQ is unavailable
+        self.pending_events = []
+        self.max_pending_events = 1000
+
     async def start_listening(self):
-        """Start listening to events from all services."""
-        try:
-            # Connect to RabbitMQ
-            self.connection = await aio_pika.connect_robust(self.settings.RABBITMQ_URL)
-            self.channel = await self.connection.channel()
-            
-            # Set up exchanges and queues
-            await self._setup_event_infrastructure()
-            
-            print("Event listener service started successfully")
-            
-        except Exception as e:
-            print(f"Failed to start event listener service: {e}")
-            raise
+        """
+        Start listening to events from all services with graceful error handling.
+        Service will start even if RabbitMQ is unavailable.
+        """
+        self.is_running = True
+        logger.info("Starting Event Listener Service...")
+
+        # Start connection attempt in background
+        self.reconnect_task = asyncio.create_task(self._connect_with_retry())
+
+        logger.info("Event Listener Service started (will connect to RabbitMQ when available)")
+        return True  # Always return success to allow service to start
+
+    async def _connect_with_retry(self):
+        """Attempt to connect to RabbitMQ with exponential backoff."""
+        retry_count = 0
+
+        while self.is_running and retry_count < self.max_retries:
+            try:
+                self.connection_state = ConnectionState.CONNECTING
+                logger.info(f"Attempting to connect to RabbitMQ (attempt {retry_count + 1}/{self.max_retries})")
+
+                # Try to connect to RabbitMQ
+                self.connection = await aio_pika.connect_robust(
+                    self.settings.RABBITMQ_URL,
+                    timeout=10.0
+                )
+                self.channel = await self.connection.channel()
+
+                # Set up exchanges and queues
+                await self._setup_event_infrastructure()
+
+                self.connection_state = ConnectionState.CONNECTED
+                logger.info("✅ Successfully connected to RabbitMQ and set up event infrastructure")
+
+                # Process any pending events
+                await self._process_pending_events()
+
+                # Set up connection close callback for automatic reconnection
+                self.connection.add_close_callback(self._on_connection_closed)
+
+                return  # Success, exit retry loop
+
+            except Exception as e:
+                retry_count += 1
+                self.connection_state = ConnectionState.FAILED
+
+                if retry_count < self.max_retries:
+                    delay = min(self.retry_delay * (2 ** retry_count), 60)  # Exponential backoff, max 60s
+                    logger.warning(f"❌ Failed to connect to RabbitMQ: {e}. Retrying in {delay} seconds...")
+                    await asyncio.sleep(delay)
+                else:
+                    logger.error(f"❌ Failed to connect to RabbitMQ after {self.max_retries} attempts: {e}")
+                    logger.info("📝 Service will continue without RabbitMQ. Events will be stored locally.")
+
+        # If we reach here, all retries failed
+        self.connection_state = ConnectionState.FAILED
 
     async def stop_listening(self):
         """Stop listening to events and close connections."""
-        if self.connection:
+        self.is_running = False
+
+        if self.reconnect_task and not self.reconnect_task.done():
+            self.reconnect_task.cancel()
+            try:
+                await self.reconnect_task
+            except asyncio.CancelledError:
+                pass
+
+        if self.connection and not self.connection.is_closed:
             await self.connection.close()
-            print("Event listener service stopped")
+
+        self.connection_state = ConnectionState.DISCONNECTED
+        logger.info("Event listener service stopped")
+
+    def _on_connection_closed(self, connection, exception=None):
+        """Handle RabbitMQ connection closure and attempt reconnection."""
+        if self.is_running:
+            logger.warning(f"RabbitMQ connection lost: {exception}")
+            self.connection_state = ConnectionState.DISCONNECTED
+
+            # Start reconnection attempt
+            if not self.reconnect_task or self.reconnect_task.done():
+                self.reconnect_task = asyncio.create_task(self._connect_with_retry())
+
+    async def _process_pending_events(self):
+        """Process events that were stored while RabbitMQ was unavailable."""
+        if not self.pending_events:
+            return
+
+        logger.info(f"Processing {len(self.pending_events)} pending events...")
+
+        for event_data in self.pending_events.copy():
+            try:
+                await self._process_event(event_data)
+                self.pending_events.remove(event_data)
+            except Exception as e:
+                logger.error(f"Failed to process pending event: {e}")
+
+        logger.info("Finished processing pending events")
+
+    def get_connection_status(self) -> Dict[str, Any]:
+        """Get current connection status for health checks."""
+        return {
+            "state": self.connection_state.value,
+            "connected": self.connection_state == ConnectionState.CONNECTED,
+            "pending_events": len(self.pending_events),
+            "rabbitmq_url": self.settings.RABBITMQ_URL,
+            "is_running": self.is_running
+        }
+
+    async def publish_event(self, event_type: str, event_data: Dict[str, Any]):
+        """
+        Publish an event. If RabbitMQ is unavailable, store locally.
+        """
+        if self.connection_state == ConnectionState.CONNECTED and self.channel:
+            try:
+                # Try to publish to RabbitMQ
+                message = aio_pika.Message(
+                    json.dumps(event_data).encode(),
+                    content_type="application/json"
+                )
+
+                await self.channel.default_exchange.publish(
+                    message,
+                    routing_key=event_type
+                )
+                logger.debug(f"Published event {event_type} to RabbitMQ")
+                return
+
+            except Exception as e:
+                logger.warning(f"Failed to publish event to RabbitMQ: {e}")
+
+        # Fallback: store event locally
+        if len(self.pending_events) < self.max_pending_events:
+            self.pending_events.append({
+                "type": event_type,
+                "data": event_data,
+                "timestamp": datetime.utcnow().isoformat()
+            })
+            logger.debug(f"Stored event {event_type} locally (RabbitMQ unavailable)")
+        else:
+            logger.warning(f"Pending events buffer full, dropping event {event_type}")
 
     async def _setup_event_infrastructure(self):
         """Set up RabbitMQ exchanges and queues for event listening."""
@@ -100,25 +251,33 @@ class EventListenerService:
         # Start consuming messages
         await admin_queue.consume(self._process_event)
 
-    async def _process_event(self, message: aio_pika.IncomingMessage):
-        """Process incoming events."""
-        async with message.process():
-            try:
-                # Parse event data
-                event_data = json.loads(message.body.decode())
-                routing_key = message.routing_key
-                
-                print(f"Processing event: {routing_key}")
-                
-                # Handle the event
-                handler = self.event_handlers.get(routing_key)
-                if handler:
-                    await handler(event_data)
-                else:
-                    print(f"No handler found for event: {routing_key}")
-                
-            except Exception as e:
-                print(f"Error processing event {message.routing_key}: {e}")
+    async def _process_event(self, message_or_data):
+        """Process incoming events from RabbitMQ or local storage."""
+        try:
+            # Handle both RabbitMQ messages and local event data
+            if isinstance(message_or_data, aio_pika.IncomingMessage):
+                # RabbitMQ message
+                async with message_or_data.process():
+                    event_data = json.loads(message_or_data.body.decode())
+                    routing_key = message_or_data.routing_key
+            else:
+                # Local event data
+                event_data = message_or_data.get("data", {})
+                routing_key = message_or_data.get("type", "unknown")
+
+            logger.debug(f"Processing event: {routing_key}")
+
+            # Handle the event
+            handler = self.event_handlers.get(routing_key)
+            if handler:
+                await handler(event_data)
+                logger.debug(f"Successfully processed event: {routing_key}")
+            else:
+                logger.warning(f"No handler found for event: {routing_key}")
+
+        except Exception as e:
+            logger.error(f"Error processing event {routing_key if 'routing_key' in locals() else 'unknown'}: {e}")
+            # Don't re-raise to prevent message requeue loops
 
     # Event Handlers
     async def _handle_order_created(self, event_data: Dict[str, Any]):

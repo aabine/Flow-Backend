@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     
     # Message Broker
     RABBITMQ_URL: str = os.getenv("RABBITMQ_URL", "amqp://guest:guest@localhost:5672/")
+    RABBITMQ_REQUIRED: bool = os.getenv("RABBITMQ_REQUIRED", "false").lower() == "true"
     
     # Service URLs
     USER_SERVICE_URL: str = os.getenv("USER_SERVICE_URL", "http://localhost:8001")

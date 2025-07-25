@@ -12,6 +12,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(
 from app.core.config import get_settings
 from app.core.database import init_db, close_db, check_db_health
 from app.api import deliveries, drivers, routes
+from app.services.event_service import event_service
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -24,19 +25,36 @@ settings = get_settings()
 async def lifespan(app: FastAPI):
     """Application lifespan events."""
     # Startup
-    logger.info("Starting Delivery Service...")
+    logger.info("🚀 Starting Delivery Service...")
     try:
         await init_db()
-        logger.info("Database initialized successfully")
+        logger.info("✅ Database initialized successfully")
+
+        # Start event service (graceful startup)
+        try:
+            await event_service.connect()
+            logger.info("✅ Event service started")
+        except Exception as e:
+            logger.warning(f"⚠️ Event service startup warning: {e}")
+            logger.info("📝 Delivery service will continue without RabbitMQ")
+
+        logger.info("🎉 Delivery Service startup completed successfully!")
     except Exception as e:
-        logger.error(f"Failed to initialize database: {e}")
+        logger.error(f"❌ Critical error during Delivery Service startup: {e}")
         raise
-    
+
     yield
-    
+
     # Shutdown
-    logger.info("Shutting down Delivery Service...")
+    logger.info("🛑 Shutting down Delivery Service...")
+    try:
+        await event_service.disconnect()
+        logger.info("✅ Event service stopped")
+    except Exception as e:
+        logger.warning(f"⚠️ Error stopping event service: {e}")
+
     await close_db()
+    logger.info("👋 Delivery Service shutdown completed")
 
 
 # Create FastAPI app
@@ -75,15 +93,38 @@ async def global_exception_handler(request: Request, exc: Exception):
 # Health check endpoints
 @app.get("/health")
 async def health_check():
-    """Health check endpoint."""
+    """Enhanced health check endpoint with dependency status."""
     try:
         db_healthy = await check_db_health()
-        
+
+        # Get RabbitMQ connection status
+        rabbitmq_status = event_service.get_connection_status()
+
+        # Determine overall health
+        is_healthy = db_healthy
+        issues = []
+
+        if not db_healthy:
+            issues.append("Database connection unavailable")
+
+        if not rabbitmq_status["connected"]:
+            issues.append("RabbitMQ connection unavailable")
+            # Note: We don't mark as unhealthy since service can run without RabbitMQ
+
         return {
-            "status": "healthy" if db_healthy else "unhealthy",
-            "service": "delivery-service",
+            "status": "healthy" if is_healthy else "unhealthy",
+            "service": "Delivery Service",
             "version": settings.VERSION,
-            "database": "connected" if db_healthy else "disconnected"
+            "dependencies": {
+                "database": "connected" if db_healthy else "disconnected",
+                "rabbitmq": {
+                    "status": rabbitmq_status["state"],
+                    "connected": rabbitmq_status["connected"],
+                    "pending_events": rabbitmq_status["pending_events"],
+                    "url": rabbitmq_status["rabbitmq_url"]
+                }
+            },
+            "issues": issues
         }
     except Exception as e:
         logger.error(f"Health check failed: {e}")
@@ -91,7 +132,7 @@ async def health_check():
             status_code=503,
             content={
                 "status": "unhealthy",
-                "service": "delivery-service",
+                "service": "Delivery Service",
                 "version": settings.VERSION,
                 "error": str(e)
             }

@@ -1,0 +1,83 @@
+version: '3.8'
+
+# Development override for docker-compose.yml
+# This file makes RabbitMQ optional for development and testing
+# Usage: docker-compose -f docker-compose.yml -f docker-compose.dev.yml up
+
+services:
+  # Admin Service - Remove hard RabbitMQ dependency for development
+  admin-service:
+    environment:
+      - RABBITMQ_REQUIRED=false
+    depends_on:
+      - postgres
+      - redis
+      # rabbitmq removed from hard dependencies
+      - user-service
+      - order-service
+      - payment-service
+      - review-service
+    # Add restart policy for resilience
+    restart: unless-stopped
+    
+  # Order Service - Remove hard RabbitMQ dependency
+  order-service:
+    environment:
+      - RABBITMQ_REQUIRED=false
+    depends_on:
+      - postgres
+      - redis
+      # rabbitmq removed from hard dependencies
+    restart: unless-stopped
+
+  # Inventory Service - Remove hard RabbitMQ dependency
+  inventory-service:
+    environment:
+      - RABBITMQ_REQUIRED=false
+    depends_on:
+      - postgres
+      - redis
+      # rabbitmq removed from hard dependencies
+    restart: unless-stopped
+
+  # Notification Service - Remove hard RabbitMQ dependency
+  notification-service:
+    environment:
+      - RABBITMQ_REQUIRED=false
+    depends_on:
+      - postgres
+      - redis
+      # rabbitmq removed from hard dependencies
+      - websocket-service
+    restart: unless-stopped
+
+  # Review Service - Remove hard RabbitMQ dependency
+  review-service:
+    environment:
+      - RABBITMQ_REQUIRED=false
+    depends_on:
+      - postgres
+      - redis
+      # rabbitmq removed from hard dependencies
+    restart: unless-stopped
+
+  # Delivery Service - Remove hard RabbitMQ dependency
+  delivery-service:
+    environment:
+      - RABBITMQ_REQUIRED=false
+    depends_on:
+      - postgres
+      - redis
+      # rabbitmq removed from hard dependencies
+    restart: unless-stopped
+    
+  # RabbitMQ - Make it optional with restart policy
+  rabbitmq:
+    restart: unless-stopped
+    # Add health check
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s

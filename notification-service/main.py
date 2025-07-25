@@ -1,11 +1,19 @@
 from fastapi import FastAPI, HTTPException, Depends, status, Header, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
+from contextlib import asynccontextmanager
 from sqlalchemy.ext.asyncio import AsyncSession
 from datetime import datetime
 from typing import Optional, List
 import logging
 import os
 import sys
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 
 # Add parent directory to path for shared imports
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -21,6 +29,7 @@ from app.schemas.notification import (
 from app.services.notification_service import NotificationService
 from app.services.email_service import EmailService
 from app.services.sms_service import SMSService
+from app.services.event_service import event_service
 
 # Define missing models locally
 from enum import Enum
@@ -46,13 +55,44 @@ class NotificationPage(BaseModel):
     unread_count: int
 
 
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup
+    logger.info("🚀 Starting Notification Service...")
+
+    try:
+        # Start event service (graceful startup)
+        try:
+            await event_service.connect()
+            logger.info("✅ Event service started")
+        except Exception as e:
+            logger.warning(f"⚠️ Event service startup warning: {e}")
+            logger.info("📝 Notification service will continue without RabbitMQ")
+
+        logger.info("🎉 Notification Service startup completed successfully!")
+
+    except Exception as e:
+        logger.error(f"❌ Critical error during Notification Service startup: {e}")
+        raise
+
+    yield
+
+    # Shutdown
+    logger.info("🛑 Shutting down Notification Service...")
+    try:
+        await event_service.disconnect()
+        logger.info("✅ Event service stopped")
+    except Exception as e:
+        logger.warning(f"⚠️ Error stopping event service: {e}")
+
+    logger.info("👋 Notification Service shutdown completed")
+
 
 app = FastAPI(
     title="Notification Service",
     description="Multi-channel notification service (Email, SMS, Push, In-App)",
-    version="1.0.0"
+    version="1.0.0",
+    lifespan=lifespan
 )
 
 app.add_middleware(
@@ -93,10 +133,33 @@ async def root():
 
 @app.get("/health")
 async def health_check():
-    """Health check endpoint."""
+    """Enhanced health check endpoint with dependency status."""
+
+    # Get RabbitMQ connection status
+    rabbitmq_status = event_service.get_connection_status()
+
+    # Determine overall health
+    is_healthy = True
+    issues = []
+
+    if not rabbitmq_status["connected"]:
+        issues.append("RabbitMQ connection unavailable")
+        # Note: We don't mark as unhealthy since service can run without RabbitMQ
+
     return {
-        "status": "healthy",
-        "timestamp": datetime.utcnow().isoformat()
+        "status": "healthy" if is_healthy else "degraded",
+        "service": "Notification Service",
+        "version": "1.0.0",
+        "timestamp": datetime.utcnow().isoformat(),
+        "dependencies": {
+            "rabbitmq": {
+                "status": rabbitmq_status["state"],
+                "connected": rabbitmq_status["connected"],
+                "pending_events": rabbitmq_status["pending_events"],
+                "url": rabbitmq_status["rabbitmq_url"]
+            }
+        },
+        "issues": issues
     }
 
 

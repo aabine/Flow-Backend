@@ -32,6 +32,13 @@ class Settings(BaseSettings):
     # SMS Settings
     SMS_API_KEY: str = os.getenv("SMS_API_KEY", "")
     SMS_SENDER_ID: str = os.getenv("SMS_SENDER_ID", "OxygenPlatform")
+
+    # RabbitMQ
+    RABBITMQ_URL: str = os.getenv("RABBITMQ_URL", "amqp://guest:guest@localhost:5672/")
+    RABBITMQ_REQUIRED: bool = os.getenv("RABBITMQ_REQUIRED", "false").lower() == "true"
+
+    # WebSocket Service
+    WEBSOCKET_SERVICE_URL: str = os.getenv("WEBSOCKET_SERVICE_URL", "http://localhost:8012")
     
     class Config:
         env_file = ".env"
