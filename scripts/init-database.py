@@ -93,21 +93,89 @@ class DatabaseInitializer:
         
         return f"postgresql://{user}:{password}@{host}:{port}/{database}"
     
-    async def connect(self):
-        """Establish database connection"""
-        try:
-            self.conn = await asyncpg.connect(self.connection_string)
-            logger.info("✅ Database connection established")
-            return True
-        except Exception as e:
-            logger.error(f"❌ Failed to connect to database: {e}")
-            return False
+    async def connect(self, max_retries: int = 10, initial_delay: float = 1.0):
+        """Establish database connection with robust retry logic"""
+        retry_delay = initial_delay
+
+        for attempt in range(max_retries):
+            try:
+                logger.info(f"🔄 Database connection attempt {attempt + 1}/{max_retries}...")
+
+                # Use connection with timeout and proper configuration
+                self.conn = await asyncpg.connect(
+                    self.connection_string,
+                    timeout=30.0,  # 30 second connection timeout
+                    command_timeout=60.0,  # 60 second command timeout
+                    server_settings={
+                        'application_name': 'flow_backend_init',
+                        'tcp_keepalives_idle': '600',
+                        'tcp_keepalives_interval': '30',
+                        'tcp_keepalives_count': '3'
+                    }
+                )
+
+                # Test the connection with a simple query
+                await self.conn.fetchval("SELECT 1")
+                logger.info("✅ Database connection established and verified")
+                return True
+
+            except (asyncpg.exceptions.ConnectionDoesNotExistError,
+                   asyncpg.exceptions.CannotConnectNowError,
+                   asyncpg.exceptions.ConnectionFailureError,
+                   ConnectionRefusedError,
+                   OSError) as e:
+                logger.warning(f"⚠️ Database connection attempt {attempt + 1} failed: {e}")
+
+                if attempt < max_retries - 1:
+                    logger.info(f"🔄 Retrying in {retry_delay:.1f} seconds...")
+                    await asyncio.sleep(retry_delay)
+                    retry_delay = min(retry_delay * 1.5, 30.0)  # Exponential backoff with cap
+                else:
+                    logger.error(f"❌ Failed to connect to database after {max_retries} attempts")
+                    return False
+
+            except Exception as e:
+                logger.error(f"❌ Unexpected database connection error: {e}")
+                return False
+
+        return False
     
     async def disconnect(self):
         """Close database connection"""
         if self.conn:
             await self.conn.close()
             logger.info("🔌 Database connection closed")
+
+    async def wait_for_database(self, max_wait_time: int = 120):
+        """Wait for database to be ready with health checks"""
+        logger.info("⏳ Waiting for database to be ready...")
+
+        start_time = asyncio.get_event_loop().time()
+        check_interval = 2.0
+
+        while (asyncio.get_event_loop().time() - start_time) < max_wait_time:
+            try:
+                # Try to establish a test connection
+                test_conn = await asyncpg.connect(
+                    self.connection_string,
+                    timeout=5.0
+                )
+
+                # Test basic database functionality
+                await test_conn.fetchval("SELECT 1")
+                await test_conn.fetchval("SELECT version()")
+
+                await test_conn.close()
+                logger.info("✅ Database is ready and accepting connections")
+                return True
+
+            except Exception as e:
+                logger.info(f"⏳ Database not ready yet: {e}")
+                await asyncio.sleep(check_interval)
+                check_interval = min(check_interval * 1.1, 10.0)  # Gradually increase interval
+
+        logger.error(f"❌ Database did not become ready within {max_wait_time} seconds")
+        return False
     
     def _define_service_schemas(self):
         """Define all service schemas based on model analysis"""
@@ -915,8 +983,16 @@ async def create_production_schema():
     """Create production-ready schema based on service analysis"""
     logger.info("🚀 Creating production-ready database schema...")
 
+    # Initialize database connection with proper retry logic
+    initializer = DatabaseInitializer()
+
     try:
-        conn = await asyncpg.connect("postgresql://user:password@localhost:5432/oxygen_platform")
+        # Use the robust connection method
+        if not await initializer.connect():
+            logger.error("❌ Failed to establish database connection")
+            return False
+
+        conn = initializer.conn
 
         # Core tables that all services depend on
         core_tables = [
@@ -1104,8 +1180,6 @@ async def create_production_schema():
             except Exception as e:
                 logger.warning(f"⚠️ Index creation warning: {e}")
 
-        await conn.close()
-
         logger.info(f"🎉 Production schema creation completed!")
         logger.info(f"   ✅ Tables created: {tables_created}/{len(core_tables)}")
         logger.info(f"   ✅ Indexes created: {indexes_created}/{len(indexes)}")
@@ -1115,10 +1189,21 @@ async def create_production_schema():
     except Exception as e:
         logger.error(f"❌ Production schema creation failed: {e}")
         return False
+    finally:
+        # Ensure connection is properly closed
+        await initializer.disconnect()
 
 async def main():
     """Main entry point"""
     logger.info("🚀 Starting Flow-Backend Database Initialization")
+
+    # Initialize database connection handler
+    initializer = DatabaseInitializer()
+
+    # Wait for database to be ready
+    if not await initializer.wait_for_database():
+        logger.error("❌ Database readiness check failed")
+        sys.exit(1)
 
     # Use the simplified production schema creation
     success = await create_production_schema()

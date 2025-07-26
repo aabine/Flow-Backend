@@ -154,6 +154,8 @@ services:
       - POSTGRES_LOG_CONNECTIONS=on
       - POSTGRES_LOG_DISCONNECTIONS=on
       - POSTGRES_LOG_CHECKPOINTS=on
+      - POSTGRES_SHARED_PRELOAD_LIBRARIES=pg_stat_statements
+      - POSTGRES_MAX_CONNECTIONS=200
     volumes:
       - postgres_data:/var/lib/postgresql/data:Z
       - ./ssl/postgres:/var/lib/postgresql/ssl:ro
@@ -170,6 +172,12 @@ services:
       - SETGID
       - SETUID
     user: "999:999"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U user -d oxygen_platform"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
     
   # Redis with security
   redis:

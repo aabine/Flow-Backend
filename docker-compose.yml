@@ -8,12 +8,35 @@ services:
       POSTGRES_DB: oxygen_platform
       POSTGRES_USER: user
       POSTGRES_PASSWORD: password
+      POSTGRES_INITDB_ARGS: "--auth-host=md5"
+      POSTGRES_HOST_AUTH_METHOD: md5
     ports:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     networks:
       - oxygen-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U user -d oxygen_platform"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    command: >
+      postgres
+      -c shared_preload_libraries=pg_stat_statements
+      -c max_connections=200
+      -c shared_buffers=256MB
+      -c effective_cache_size=1GB
+      -c maintenance_work_mem=64MB
+      -c checkpoint_completion_target=0.9
+      -c wal_buffers=16MB
+      -c default_statistics_target=100
+      -c random_page_cost=1.1
+      -c effective_io_concurrency=200
+      -c work_mem=4MB
+      -c min_wal_size=1GB
+      -c max_wal_size=4GB
 
   redis:
     image: redis:7-alpine
@@ -92,8 +115,10 @@ services:
       - DATABASE_URL=postgresql+asyncpg://user:password@postgres:5432/oxygen_platform
       - REDIS_URL=redis://redis:6379/0
     depends_on:
-      - postgres
-      - redis
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
     networks:
       - oxygen-network
 
@@ -113,9 +138,12 @@ services:
       - NOTIFICATION_SERVICE_URL=http://notification-service:8010
       - PRICING_SERVICE_URL=http://pricing-service:8006
     depends_on:
-      - postgres
-      - redis
-      - rabbitmq
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      rabbitmq:
+        condition: service_started
     networks:
       - oxygen-network
 
@@ -132,9 +160,12 @@ services:
       - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672/
       - WEBSOCKET_SERVICE_URL=http://websocket-service:8012
     depends_on:
-      - postgres
-      - redis
-      - rabbitmq
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      rabbitmq:
+        condition: service_started
     networks:
       - oxygen-network
 
@@ -152,8 +183,10 @@ services:
       - PAYSTACK_PUBLIC_KEY=${PAYSTACK_PUBLIC_KEY}
       - PLATFORM_FEE_PERCENTAGE=5.0
     depends_on:
-      - postgres
-      - redis
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
     networks:
       - oxygen-network
 
@@ -169,8 +202,10 @@ services:
       - REDIS_URL=redis://redis:6379/0
       - WEBSOCKET_SERVICE_URL=http://websocket-service:8012
     depends_on:
-      - postgres
-      - redis
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
     networks:
       - oxygen-network
 
@@ -194,10 +229,14 @@ services:
       - TWILIO_AUTH_TOKEN=${TWILIO_AUTH_TOKEN}
       - TWILIO_PHONE_NUMBER=${TWILIO_PHONE_NUMBER}
     depends_on:
-      - postgres
-      - redis
-      - rabbitmq
-      - websocket-service
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      rabbitmq:
+        condition: service_started
+      websocket-service:
+        condition: service_started
     networks:
       - oxygen-network
 
@@ -231,7 +270,8 @@ services:
     environment:
       - DATABASE_URL=postgresql+asyncpg://user:password@postgres:5432/oxygen_platform
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
     networks:
       - oxygen-network
 
@@ -247,7 +287,8 @@ services:
       - DATABASE_URL=postgresql+asyncpg://user:password@postgres:5432/oxygen_platform
       - SECRET_KEY=your-secret-key-here-change-in-production
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
     networks:
       - oxygen-network
 
@@ -267,9 +308,12 @@ services:
       - ORDER_SERVICE_URL=http://order-service:8005
       - NOTIFICATION_SERVICE_URL=http://notification-service:8010
     depends_on:
-      - postgres
-      - redis
-      - rabbitmq
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      rabbitmq:
+        condition: service_started
     networks:
       - oxygen-network
 
@@ -294,13 +338,20 @@ services:
       - PRICING_SERVICE_URL=http://pricing-service:8006
       - SUPPLIER_ONBOARDING_SERVICE_URL=http://supplier-onboarding-service:8002
     depends_on:
-      - postgres
-      - redis
-      - rabbitmq
-      - user-service
-      - order-service
-      - payment-service
-      - review-service
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      rabbitmq:
+        condition: service_started
+      user-service:
+        condition: service_started
+      order-service:
+        condition: service_started
+      payment-service:
+        condition: service_started
+      review-service:
+        condition: service_started
     networks:
       - oxygen-network
 
@@ -324,9 +375,12 @@ services:
       - WEBSOCKET_SERVICE_URL=http://websocket-service:8012
       - INVENTORY_SERVICE_URL=http://inventory-service:8004
     depends_on:
-      - postgres
-      - redis
-      - rabbitmq
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      rabbitmq:
+        condition: service_started
     networks:
       - oxygen-network
 
