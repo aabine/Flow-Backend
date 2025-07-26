@@ -146,7 +146,27 @@ async def root():
         "service": "delivery-service",
         "version": settings.VERSION,
         "status": "running",
-        "docs": "/docs"
+        "docs": "/docs",
+        "endpoints": {
+            "deliveries": "/api/v1/deliveries",
+            "drivers": "/api/v1/drivers",
+            "routes": "/api/v1/routes"
+        }
+    }
+
+@app.get("/deliveries")
+async def deliveries_info():
+    """Deliveries endpoint information."""
+    return {
+        "message": "Delivery Service - Deliveries API",
+        "endpoints": {
+            "GET /api/v1/deliveries": "Get deliveries with filtering (requires authentication)",
+            "POST /api/v1/deliveries": "Create a new delivery (requires authentication)",
+            "GET /api/v1/deliveries/{delivery_id}": "Get specific delivery (requires authentication)",
+            "PUT /api/v1/deliveries/{delivery_id}": "Update delivery (requires authentication)"
+        },
+        "authentication": "Required for all endpoints except this one",
+        "documentation": "/docs"
     }
 
 

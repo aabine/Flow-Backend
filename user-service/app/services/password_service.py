@@ -96,7 +96,7 @@ class PasswordService:
         
         # Sequential characters check
         if self._has_sequential_chars(password):
-            errors.append("Password should not contain sequential characters (e.g., 123, abc)")
+            errors.append("Password should not contain long sequential characters (e.g., 1234, abcd)")
             score -= 1
         
         # Repeated characters check
@@ -119,14 +119,20 @@ class PasswordService:
         }
     
     def _has_sequential_chars(self, password: str) -> bool:
-        """Check for sequential characters."""
-        sequences = ["123", "234", "345", "456", "567", "678", "789", "890",
-                    "abc", "bcd", "cde", "def", "efg", "fgh", "ghi", "hij",
-                    "ijk", "jkl", "klm", "lmn", "mno", "nop", "opq", "pqr",
-                    "qrs", "rst", "stu", "tuv", "uvw", "vwx", "wxy", "xyz"]
-        
+        """Check for sequential characters (only long sequences are problematic)."""
+        # Only check for longer sequences (4+ characters) or very common ones
+        problematic_sequences = [
+            "1234", "2345", "3456", "4567", "5678", "6789", "7890",
+            "abcd", "bcde", "cdef", "defg", "efgh", "fghi", "ghij",
+            "hijk", "ijkl", "jklm", "klmn", "lmno", "mnop", "nopq",
+            "opqr", "pqrs", "qrst", "rstu", "stuv", "tuvw", "uvwx",
+            "vwxy", "wxyz",
+            # Very common short sequences
+            "123456", "654321", "abcdef", "fedcba"
+        ]
+
         password_lower = password.lower()
-        return any(seq in password_lower for seq in sequences)
+        return any(seq in password_lower for seq in problematic_sequences)
     
     def _has_repeated_chars(self, password: str) -> bool:
         """Check for excessive repeated characters."""

@@ -1,0 +1,454 @@
+
+================================================================================
+FLOW-BACKEND END-TO-END TEST REPORT
+================================================================================
+Test Execution Time: 2025-07-26 08:54:00
+
+SUMMARY:
+--------
+Total Tests: 28
+Passed: 24
+Failed: 4
+Success Rate: 85.7%
+
+SERVICE HEALTH STATUS:
+---------------------
+api_gateway          : HEALTHY
+user_service         : HEALTHY
+supplier_onboarding  : HEALTHY
+location_service     : HEALTHY
+inventory_service    : HEALTHY
+order_service        : HEALTHY
+pricing_service      : HEALTHY
+delivery_service     : HEALTHY
+payment_service      : HEALTHY
+review_service       : HEALTHY
+notification_service : HEALTHY
+admin_service        : HEALTHY
+websocket_service    : HEALTHY
+
+FAILED TESTS:
+-------------
+• Database connectivity - User registration: HTTP 400: {"detail":"Password validation failed: Password should not contain sequential characters (e.g., 123, abc)"}
+• Business Operations - Inventory endpoint: HTTP 422
+• Business Operations - Pricing endpoint: HTTP 422
+• Business Operations - Location endpoint: HTTP 405
+
+================================================================================
+
+DETAILED TEST RESULTS:
+{
+  "total_tests": 28,
+  "passed": 24,
+  "failed": 4,
+  "errors": [
+    "Database connectivity - User registration: HTTP 400: {\"detail\":\"Password validation failed: Password should not contain sequential characters (e.g., 123, abc)\"}",
+    "Business Operations - Inventory endpoint: HTTP 422",
+    "Business Operations - Pricing endpoint: HTTP 422",
+    "Business Operations - Location endpoint: HTTP 405"
+  ],
+  "service_health": {
+    "api_gateway": {
+      "status": "healthy",
+      "response_time": "N/A",
+      "details": {
+        "gateway_status": "healthy",
+        "timestamp": "2025-07-26T07:54:00.311870",
+        "services": {
+          "user": {
+            "status": "healthy",
+            "response_time": 0.005
+          },
+          "supplier_onboarding": {
+            "status": "healthy",
+            "response_time": 0.003
+          },
+          "location": {
+            "status": "healthy",
+            "response_time": 0.006
+          },
+          "inventory": {
+            "status": "healthy",
+            "response_time": 0.005
+          },
+          "order": {
+            "status": "healthy",
+            "response_time": 0.004
+          },
+          "pricing": {
+            "status": "healthy",
+            "response_time": 0.007
+          },
+          "delivery": {
+            "status": "healthy",
+            "response_time": 0.543
+          },
+          "payment": {
+            "status": "healthy",
+            "response_time": 0.006
+          },
+          "review": {
+            "status": "healthy",
+            "response_time": 0.004
+          },
+          "notification": {
+            "status": "healthy",
+            "response_time": 0.003
+          },
+          "admin": {
+            "status": "healthy",
+            "response_time": 0.007
+          }
+        }
+      }
+    },
+    "user_service": {
+      "status": "healthy",
+      "response_time": "N/A",
+      "details": {
+        "status": "healthy",
+        "timestamp": "2025-07-26T07:54:00.347787"
+      }
+    },
+    "supplier_onboarding": {
+      "status": "healthy",
+      "response_time": "N/A",
+      "details": {
+        "status": "healthy",
+        "service": "Supplier Onboarding Service",
+        "version": "1.0.0",
+        "timestamp": "2025-07-26T07:54:00.352157"
+      }
+    },
+    "location_service": {
+      "status": "healthy",
+      "response_time": "N/A",
+      "details": {
+        "status": "healthy",
+        "timestamp": "2025-07-26T07:54:00.362316"
+      }
+    },
+    "inventory_service": {
+      "status": "healthy",
+      "response_time": "N/A",
+      "details": {
+        "status": "healthy",
+        "service": "Inventory Service",
+        "version": "1.0.0",
+        "timestamp": "2025-07-26T07:54:00.373186",
+        "dependencies": {
+          "rabbitmq": {
+            "status": "failed",
+            "connected": false,
+            "pending_events": 0,
+            "url": "amqp://guest:guest@rabbitmq:5672/"
+          }
+        },
+        "issues": [
+          "RabbitMQ connection unavailable"
+        ]
+      }
+    },
+    "order_service": {
+      "status": "healthy",
+      "response_time": "N/A",
+      "details": {
+        "status": "healthy",
+        "service": "Order Service",
+        "version": "1.0.0",
+        "timestamp": "2025-07-26T07:54:00.378282",
+        "dependencies": {
+          "rabbitmq": {
+            "status": "failed",
+            "connected": false,
+            "pending_events": 0,
+            "url": "amqp://guest:guest@rabbitmq:5672/"
+          }
+        },
+        "issues": [
+          "RabbitMQ connection unavailable"
+        ]
+      }
+    },
+    "pricing_service": {
+      "status": "healthy",
+      "response_time": "N/A",
+      "details": {
+        "status": "healthy",
+        "service": "pricing-service",
+        "timestamp": "2025-07-26T07:54:00.386018"
+      }
+    },
+    "delivery_service": {
+      "status": "healthy",
+      "response_time": "N/A",
+      "details": {
+        "status": "healthy",
+        "service": "Delivery Service",
+        "version": "1.0.0",
+        "dependencies": {
+          "database": "connected",
+          "rabbitmq": {
+            "status": "failed",
+            "connected": false,
+            "pending_events": 0,
+            "url": "amqp://guest:guest@rabbitmq:5672/"
+          }
+        },
+        "issues": [
+          "RabbitMQ connection unavailable"
+        ]
+      }
+    },
+    "payment_service": {
+      "status": "healthy",
+      "response_time": "N/A",
+      "details": {
+        "status": "healthy",
+        "timestamp": "2025-07-26T07:54:00.503335"
+      }
+    },
+    "review_service": {
+      "status": "healthy",
+      "response_time": "N/A",
+      "details": {
+        "status": "healthy",
+        "service": "Review Service",
+        "version": "1.0.0",
+        "timestamp": "2025-07-26T07:54:00.508804",
+        "dependencies": {
+          "rabbitmq": {
+            "status": "failed",
+            "connected": false,
+            "pending_events": 0,
+            "url": "amqp://guest:guest@rabbitmq:5672/"
+          }
+        },
+        "issues": [
+          "RabbitMQ connection unavailable"
+        ]
+      }
+    },
+    "notification_service": {
+      "status": "healthy",
+      "response_time": "N/A",
+      "details": {
+        "status": "healthy",
+        "service": "Notification Service",
+        "version": "1.0.0",
+        "timestamp": "2025-07-26T07:54:00.515531",
+        "dependencies": {
+          "rabbitmq": {
+            "status": "failed",
+            "connected": false,
+            "pending_events": 0,
+            "url": "amqp://guest:guest@rabbitmq:5672/"
+          }
+        },
+        "issues": [
+          "RabbitMQ connection unavailable"
+        ]
+      }
+    },
+    "admin_service": {
+      "status": "healthy",
+      "response_time": "N/A",
+      "details": {
+        "status": "healthy",
+        "service": "Admin Service",
+        "version": "1.0.0",
+        "timestamp": "2025-07-26T07:54:00.519561",
+        "dependencies": {
+          "rabbitmq": {
+            "status": "failed",
+            "connected": false,
+            "pending_events": 0,
+            "url": "amqp://guest:guest@rabbitmq:5672/"
+          }
+        },
+        "issues": [
+          "RabbitMQ connection unavailable"
+        ]
+      }
+    },
+    "websocket_service": {
+      "status": "healthy",
+      "response_time": "N/A",
+      "details": {
+        "status": "healthy",
+        "timestamp": "2025-07-26T07:54:00.527477",
+        "active_connections": 0
+      }
+    }
+  },
+  "test_details": [
+    {
+      "test_name": "Health check - api_gateway",
+      "status": "PASSED",
+      "details": "Service healthy: {'gateway_status': 'healthy', 'timestamp': '2025-07-26T07:54:00.311870', 'services': {'user': {'status': 'healthy', 'response_time': 0.005}, 'supplier_onboarding': {'status': 'healthy', 'response_time': 0.003}, 'location': {'status': 'healthy', 'response_time': 0.006}, 'inventory': {'status': 'healthy', 'response_time': 0.005}, 'order': {'status': 'healthy', 'response_time': 0.004}, 'pricing': {'status': 'healthy', 'response_time': 0.007}, 'delivery': {'status': 'healthy', 'response_time': 0.543}, 'payment': {'status': 'healthy', 'response_time': 0.006}, 'review': {'status': 'healthy', 'response_time': 0.004}, 'notification': {'status': 'healthy', 'response_time': 0.003}, 'admin': {'status': 'healthy', 'response_time': 0.007}}}",
+      "timestamp": "2025-07-26T08:54:00.345101"
+    },
+    {
+      "test_name": "Health check - user_service",
+      "status": "PASSED",
+      "details": "Service healthy: {'status': 'healthy', 'timestamp': '2025-07-26T07:54:00.347787'}",
+      "timestamp": "2025-07-26T08:54:00.349111"
+    },
+    {
+      "test_name": "Health check - supplier_onboarding",
+      "status": "PASSED",
+      "details": "Service healthy: {'status': 'healthy', 'service': 'Supplier Onboarding Service', 'version': '1.0.0', 'timestamp': '2025-07-26T07:54:00.352157'}",
+      "timestamp": "2025-07-26T08:54:00.355255"
+    },
+    {
+      "test_name": "Health check - location_service",
+      "status": "PASSED",
+      "details": "Service healthy: {'status': 'healthy', 'timestamp': '2025-07-26T07:54:00.362316'}",
+      "timestamp": "2025-07-26T08:54:00.365709"
+    },
+    {
+      "test_name": "Health check - inventory_service",
+      "status": "PASSED",
+      "details": "Service healthy: {'status': 'healthy', 'service': 'Inventory Service', 'version': '1.0.0', 'timestamp': '2025-07-26T07:54:00.373186', 'dependencies': {'rabbitmq': {'status': 'failed', 'connected': False, 'pending_events': 0, 'url': 'amqp://guest:guest@rabbitmq:5672/'}}, 'issues': ['RabbitMQ connection unavailable']}",
+      "timestamp": "2025-07-26T08:54:00.375276"
+    },
+    {
+      "test_name": "Health check - order_service",
+      "status": "PASSED",
+      "details": "Service healthy: {'status': 'healthy', 'service': 'Order Service', 'version': '1.0.0', 'timestamp': '2025-07-26T07:54:00.378282', 'dependencies': {'rabbitmq': {'status': 'failed', 'connected': False, 'pending_events': 0, 'url': 'amqp://guest:guest@rabbitmq:5672/'}}, 'issues': ['RabbitMQ connection unavailable']}",
+      "timestamp": "2025-07-26T08:54:00.382689"
+    },
+    {
+      "test_name": "Health check - pricing_service",
+      "status": "PASSED",
+      "details": "Service healthy: {'status': 'healthy', 'service': 'pricing-service', 'timestamp': '2025-07-26T07:54:00.386018'}",
+      "timestamp": "2025-07-26T08:54:00.389808"
+    },
+    {
+      "test_name": "Health check - delivery_service",
+      "status": "PASSED",
+      "details": "Service healthy: {'status': 'healthy', 'service': 'Delivery Service', 'version': '1.0.0', 'dependencies': {'database': 'connected', 'rabbitmq': {'status': 'failed', 'connected': False, 'pending_events': 0, 'url': 'amqp://guest:guest@rabbitmq:5672/'}}, 'issues': ['RabbitMQ connection unavailable']}",
+      "timestamp": "2025-07-26T08:54:00.500997"
+    },
+    {
+      "test_name": "Health check - payment_service",
+      "status": "PASSED",
+      "details": "Service healthy: {'status': 'healthy', 'timestamp': '2025-07-26T07:54:00.503335'}",
+      "timestamp": "2025-07-26T08:54:00.505084"
+    },
+    {
+      "test_name": "Health check - review_service",
+      "status": "PASSED",
+      "details": "Service healthy: {'status': 'healthy', 'service': 'Review Service', 'version': '1.0.0', 'timestamp': '2025-07-26T07:54:00.508804', 'dependencies': {'rabbitmq': {'status': 'failed', 'connected': False, 'pending_events': 0, 'url': 'amqp://guest:guest@rabbitmq:5672/'}}, 'issues': ['RabbitMQ connection unavailable']}",
+      "timestamp": "2025-07-26T08:54:00.511256"
+    },
+    {
+      "test_name": "Health check - notification_service",
+      "status": "PASSED",
+      "details": "Service healthy: {'status': 'healthy', 'service': 'Notification Service', 'version': '1.0.0', 'timestamp': '2025-07-26T07:54:00.515531', 'dependencies': {'rabbitmq': {'status': 'failed', 'connected': False, 'pending_events': 0, 'url': 'amqp://guest:guest@rabbitmq:5672/'}}, 'issues': ['RabbitMQ connection unavailable']}",
+      "timestamp": "2025-07-26T08:54:00.516749"
+    },
+    {
+      "test_name": "Health check - admin_service",
+      "status": "PASSED",
+      "details": "Service healthy: {'status': 'healthy', 'service': 'Admin Service', 'version': '1.0.0', 'timestamp': '2025-07-26T07:54:00.519561', 'dependencies': {'rabbitmq': {'status': 'failed', 'connected': False, 'pending_events': 0, 'url': 'amqp://guest:guest@rabbitmq:5672/'}}, 'issues': ['RabbitMQ connection unavailable']}",
+      "timestamp": "2025-07-26T08:54:00.522037"
+    },
+    {
+      "test_name": "Health check - websocket_service",
+      "status": "PASSED",
+      "details": "Service healthy: {'status': 'healthy', 'timestamp': '2025-07-26T07:54:00.527477', 'active_connections': 0}",
+      "timestamp": "2025-07-26T08:54:00.531835"
+    },
+    {
+      "test_name": "Database connectivity - User registration",
+      "status": "FAILED",
+      "details": "HTTP 400: {\"detail\":\"Password validation failed: Password should not contain sequential characters (e.g., 123, abc)\"}",
+      "timestamp": "2025-07-26T08:54:00.566538"
+    },
+    {
+      "test_name": "Business Operations - Inventory endpoint",
+      "status": "FAILED",
+      "details": "HTTP 422",
+      "timestamp": "2025-07-26T08:54:00.574053"
+    },
+    {
+      "test_name": "Business Operations - Order endpoint",
+      "status": "PASSED",
+      "details": "Endpoint accessible (HTTP 401)",
+      "timestamp": "2025-07-26T08:54:00.682849"
+    },
+    {
+      "test_name": "Business Operations - Pricing endpoint",
+      "status": "FAILED",
+      "details": "HTTP 422",
+      "timestamp": "2025-07-26T08:54:00.736506"
+    },
+    {
+      "test_name": "Business Operations - Location endpoint",
+      "status": "FAILED",
+      "details": "HTTP 405",
+      "timestamp": "2025-07-26T08:54:00.745224"
+    },
+    {
+      "test_name": "Inter-Service - API Gateway routing",
+      "status": "PASSED",
+      "details": "Gateway accessible (HTTP 404)",
+      "timestamp": "2025-07-26T08:54:00.769361"
+    },
+    {
+      "test_name": "Inter-Service - Service dependencies",
+      "status": "PASSED",
+      "details": "Dependencies: 0/1 healthy",
+      "timestamp": "2025-07-26T08:54:00.778210"
+    },
+    {
+      "test_name": "Security - Unauthorized access protection (/auth/me)",
+      "status": "PASSED",
+      "details": "Endpoint inaccessible (HTTP 404)",
+      "timestamp": "2025-07-26T08:54:00.832408"
+    },
+    {
+      "test_name": "Security - Unauthorized access protection (/inventory/)",
+      "status": "PASSED",
+      "details": "Endpoint inaccessible (HTTP 422)",
+      "timestamp": "2025-07-26T08:54:00.836222"
+    },
+    {
+      "test_name": "Security - Unauthorized access protection (/orders/)",
+      "status": "PASSED",
+      "details": "Properly protected (HTTP 401)",
+      "timestamp": "2025-07-26T08:54:00.846298"
+    },
+    {
+      "test_name": "Security - Unauthorized access protection (/admin/dashboard)",
+      "status": "PASSED",
+      "details": "Endpoint inaccessible (HTTP 404)",
+      "timestamp": "2025-07-26T08:54:00.851308"
+    },
+    {
+      "test_name": "Security - Input validation",
+      "status": "PASSED",
+      "details": "Invalid input rejected (HTTP 422)",
+      "timestamp": "2025-07-26T08:54:00.926360"
+    },
+    {
+      "test_name": "Security - Security headers",
+      "status": "PASSED",
+      "details": "Headers present: X-Content-Type-Options, X-Frame-Options, X-XSS-Protection",
+      "timestamp": "2025-07-26T08:54:00.930675"
+    },
+    {
+      "test_name": "Error Handling - 404 responses",
+      "status": "PASSED",
+      "details": "404 properly returned",
+      "timestamp": "2025-07-26T08:54:00.938968"
+    },
+    {
+      "test_name": "Error Handling - Invalid JSON",
+      "status": "PASSED",
+      "details": "Invalid JSON rejected (HTTP 422)",
+      "timestamp": "2025-07-26T08:54:00.954112"
+    }
+  ]
+}

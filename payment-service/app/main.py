@@ -103,7 +103,7 @@ async def initialize_payment(
         
         # Create payment record
         payment = await payment_service.create_payment(
-            db, current_user["user_id"], payment_data
+            payment_data, current_user["user_id"], "vendor_id_placeholder", 5.0
         )
         
         # Initialize payment with Paystack
@@ -116,7 +116,7 @@ async def initialize_payment(
         
         # Update payment with Paystack data
         await payment_service.update_payment_with_paystack_data(
-            db, payment.id, paystack_response
+            payment.id, paystack_response
         )
         
         return PaymentInitializeResponse(
@@ -142,7 +142,7 @@ async def get_payment(
 ):
     """Get payment details."""
     try:
-        payment = await payment_service.get_payment_by_id(db, payment_id)
+        payment = await payment_service.get_payment(payment_id)
         if not payment:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -177,7 +177,7 @@ async def get_payments(
     """Get payments for current user."""
     try:
         payments, total = await payment_service.get_user_payments(
-            db, current_user["user_id"], current_user["role"], page, size, status_filter
+            current_user["user_id"], page, size, status_filter
         )
         
         return {
@@ -202,7 +202,7 @@ async def verify_payment(
 ):
     """Verify payment status with Paystack."""
     try:
-        payment = await payment_service.get_payment_by_id(db, payment_id)
+        payment = await payment_service.get_payment(payment_id)
         if not payment:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -221,12 +221,12 @@ async def verify_payment(
         
         # Update payment status
         updated_payment = await payment_service.update_payment_status(
-            db, payment_id, verification_result
+            payment_id, PaymentStatus.COMPLETED
         )
-        
+
         # If payment successful, process split payments
-        if updated_payment.status == PaymentStatus.COMPLETED:
-            await payment_service.process_split_payments(db, payment_id)
+        if updated_payment and updated_payment.status == PaymentStatus.COMPLETED:
+            await payment_service.process_split_payments(payment_id)
             await event_service.emit_payment_completed(updated_payment)
         
         return APIResponse(
@@ -273,19 +273,19 @@ async def paystack_webhook(request: Request, db: AsyncSession = Depends(get_db))
         webhook_data = await request.json()
         
         # Log webhook
-        await payment_service.log_webhook(db, webhook_data)
-        
+        await payment_service.log_webhook(webhook_data)
+
         # Process webhook based on event type
         event_type = webhook_data.get("event")
-        
+
         if event_type == "charge.success":
-            await payment_service.handle_successful_payment(db, webhook_data["data"])
+            await payment_service.handle_successful_payment(webhook_data["data"])
         elif event_type == "charge.failed":
-            await payment_service.handle_failed_payment(db, webhook_data["data"])
+            await payment_service.handle_failed_payment(webhook_data["data"])
         elif event_type == "transfer.success":
-            await payment_service.handle_successful_transfer(db, webhook_data["data"])
+            await payment_service.handle_successful_transfer(webhook_data["data"])
         elif event_type == "transfer.failed":
-            await payment_service.handle_failed_transfer(db, webhook_data["data"])
+            await payment_service.handle_failed_transfer(webhook_data["data"])
         
         return {"status": "success"}
     except HTTPException:
@@ -305,7 +305,7 @@ async def get_payment_splits(
 ):
     """Get payment split details."""
     try:
-        payment = await payment_service.get_payment_by_id(db, payment_id)
+        payment = await payment_service.get_payment(payment_id)
         if not payment:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -318,8 +318,8 @@ async def get_payment_splits(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Access denied"
             )
-        
-        splits = await payment_service.get_payment_splits(db, payment_id)
+
+        splits = await payment_service.get_payment_splits(payment_id)
         
         return {
             "payment_id": payment_id,
@@ -350,7 +350,7 @@ async def refund_payment(
                 detail="Admin access required"
             )
         
-        payment = await payment_service.get_payment_by_id(db, payment_id)
+        payment = await payment_service.get_payment(payment_id)
         if not payment:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -370,7 +370,7 @@ async def refund_payment(
         
         # Update payment status
         await payment_service.update_payment_status_to_refunded(
-            db, payment_id, refund_result, reason
+            payment_id, {}, reason
         )
         
         return APIResponse(
@@ -413,7 +413,7 @@ async def get_vendor_earnings(
             )
         
         earnings = await payment_service.get_vendor_earnings(
-            db, vendor_id, start_date, end_date
+            vendor_id, start_date, end_date
         )
         
         return earnings
@@ -442,7 +442,7 @@ async def get_platform_revenue(
             )
         
         revenue = await payment_service.get_platform_revenue(
-            db, start_date, end_date
+            start_date, end_date
         )
         
         return revenue

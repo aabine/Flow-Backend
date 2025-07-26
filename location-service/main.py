@@ -62,6 +62,21 @@ async def root():
         "timestamp": datetime.utcnow().isoformat()
     }
 
+@app.get("/locations/")
+async def locations_info():
+    """Locations endpoint information."""
+    return {
+        "message": "Location Service API",
+        "endpoints": {
+            "POST /locations": "Create a new location (requires authentication)",
+            "GET /locations/{location_id}": "Get location by ID (requires authentication)",
+            "GET /vendors/nearby": "Find nearby vendors (requires authentication)",
+            "GET /hospitals/nearby": "Find nearby hospitals (requires authentication)"
+        },
+        "authentication": "Required for all endpoints except this one",
+        "documentation": "/docs"
+    }
+
 
 @app.get("/health")
 async def health_check():

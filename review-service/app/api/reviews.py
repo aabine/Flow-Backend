@@ -33,6 +33,70 @@ async def get_current_user(
     }
 
 
+async def _get_reviews_impl(
+    page: int = Query(1, ge=1),
+    size: int = Query(20, ge=1, le=100),
+    rating: Optional[int] = Query(None, ge=1, le=5),
+    review_type: Optional[str] = Query(None),
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """Internal implementation for getting reviews."""
+    filters = ReviewFilters(rating=rating, review_type=review_type)
+    reviews, total = await review_service.get_reviews(
+        db, filters, page, size
+    )
+
+    pages = (total + size - 1) // size
+
+    return PaginatedReviewResponse(
+        items=[ReviewResponseModel.from_orm(review) for review in reviews],
+        total=total,
+        page=page,
+        size=size,
+        pages=pages
+    )
+
+
+@router.get("/", response_model=PaginatedReviewResponse)
+async def get_reviews(
+    page: int = Query(1, ge=1),
+    size: int = Query(20, ge=1, le=100),
+    rating: Optional[int] = Query(None, ge=1, le=5),
+    review_type: Optional[str] = Query(None),
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """Get reviews with pagination and filtering."""
+    try:
+        return await _get_reviews_impl(page, size, rating, review_type, current_user, db)
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get reviews: {str(e)}"
+        )
+
+
+# Add route without trailing slash for consistency
+@router.get("", response_model=PaginatedReviewResponse)
+async def get_reviews_no_slash(
+    page: int = Query(1, ge=1),
+    size: int = Query(20, ge=1, le=100),
+    rating: Optional[int] = Query(None, ge=1, le=5),
+    review_type: Optional[str] = Query(None),
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """Get reviews with pagination and filtering (no trailing slash)."""
+    try:
+        return await _get_reviews_impl(page, size, rating, review_type, current_user, db)
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get reviews: {str(e)}"
+        )
+
+
 @router.post("/", response_model=APIResponse)
 async def create_review(
     review_data: ReviewCreate,

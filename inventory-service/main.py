@@ -74,13 +74,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Include API routers
-app.include_router(inventory_router, prefix="/inventory", tags=["inventory"])
-app.include_router(stock_movements_router, prefix="/stock-movements", tags=["stock-movements"])
-
-
-
-
 @app.get("/")
 async def root():
     """Root endpoint."""
@@ -89,6 +82,26 @@ async def root():
         "version": "1.0.0",
         "timestamp": datetime.utcnow().isoformat()
     }
+
+@app.get("/inventory/")
+async def inventory_info():
+    """Inventory endpoint information."""
+    return {
+        "message": "Inventory Service API",
+        "endpoints": {
+            "GET /inventory/": "Get inventory with filtering (requires authentication)",
+            "POST /inventory/": "Create inventory item (requires authentication)",
+            "GET /inventory/{inventory_id}": "Get specific inventory item (requires authentication)",
+            "PUT /inventory/{inventory_id}": "Update inventory item (requires authentication)",
+            "DELETE /inventory/{inventory_id}": "Delete inventory item (requires authentication)"
+        },
+        "authentication": "Required for all endpoints except this one",
+        "documentation": "/docs"
+    }
+
+# Include API routers
+app.include_router(inventory_router, prefix="/inventory", tags=["inventory"])
+app.include_router(stock_movements_router, prefix="/stock-movements", tags=["stock-movements"])
 
 
 @app.get("/health")

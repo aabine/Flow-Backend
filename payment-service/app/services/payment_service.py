@@ -72,8 +72,10 @@ class PaymentService:
 
     async def get_payment(self, payment_id: str) -> Optional[Payment]:
         """Get payment by ID."""
+        import uuid
+        payment_uuid = uuid.UUID(payment_id) if isinstance(payment_id, str) else payment_id
         result = await self.db.execute(
-            select(Payment).where(Payment.id == payment_id)
+            select(Payment).where(Payment.id == payment_uuid)
         )
         return result.scalar_one_or_none()
 
@@ -103,7 +105,9 @@ class PaymentService:
 
     async def get_user_payments(self, user_id: str, page: int = 1, size: int = 20, status_filter: Optional[PaymentStatus] = None) -> tuple[List[Payment], int]:
         """Get payments for a user with pagination."""
-        query = select(Payment).where(Payment.user_id == user_id)
+        import uuid
+        user_uuid = uuid.UUID(user_id) if isinstance(user_id, str) else user_id
+        query = select(Payment).where(Payment.user_id == user_uuid)
         
         if status_filter:
             query = query.where(Payment.status == status_filter)
@@ -133,3 +137,68 @@ class PaymentService:
         payments = result.scalars().all()
         
         return list(payments), total
+
+    async def get_payment_by_id(self, payment_id: str) -> Optional[Payment]:
+        """Get payment by ID (alias for get_payment)."""
+        return await self.get_payment(payment_id)
+
+    async def can_access_payment(self, payment: Payment, user_id: str, role: str) -> bool:
+        """Check if user can access payment."""
+        if role == "admin":
+            return True
+        return payment.user_id == user_id or payment.vendor_id == user_id
+
+    async def update_payment_with_paystack_data(self, payment_id: str, paystack_data: dict):
+        """Update payment with Paystack data."""
+        payment = await self.get_payment(payment_id)
+        if payment:
+            payment.paystack_reference = paystack_data.get("reference")
+            payment.paystack_access_code = paystack_data.get("access_code")
+            payment.authorization_url = paystack_data.get("authorization_url")
+            await self.db.commit()
+
+    async def process_split_payments(self, payment_id: str):
+        """Process split payments (placeholder)."""
+        # Implementation would handle actual payment splitting
+        pass
+
+    async def log_webhook(self, webhook_data: dict):
+        """Log webhook data (placeholder)."""
+        # Implementation would log webhook for audit
+        pass
+
+    async def handle_successful_payment(self, payment_data: dict):
+        """Handle successful payment webhook (placeholder)."""
+        pass
+
+    async def handle_failed_payment(self, payment_data: dict):
+        """Handle failed payment webhook (placeholder)."""
+        pass
+
+    async def handle_successful_transfer(self, transfer_data: dict):
+        """Handle successful transfer webhook (placeholder)."""
+        pass
+
+    async def handle_failed_transfer(self, transfer_data: dict):
+        """Handle failed transfer webhook (placeholder)."""
+        pass
+
+    async def can_access_payment_splits(self, payment: Payment, user_id: str, role: str) -> bool:
+        """Check if user can access payment splits."""
+        return await self.can_access_payment(payment, user_id, role)
+
+    async def get_payment_splits(self, payment_id: str) -> List:
+        """Get payment splits (placeholder)."""
+        return []
+
+    async def update_payment_status_to_refunded(self, payment_id: str, refund_result: dict, reason: str):
+        """Update payment status to refunded (placeholder)."""
+        await self.update_payment_status(payment_id, PaymentStatus.REFUNDED)
+
+    async def get_vendor_earnings(self, vendor_id: str, start_date=None, end_date=None) -> dict:
+        """Get vendor earnings (placeholder)."""
+        return {"total_earnings": 0, "payment_count": 0}
+
+    async def get_platform_revenue(self, start_date=None, end_date=None) -> dict:
+        """Get platform revenue (placeholder)."""
+        return {"total_revenue": 0, "payment_count": 0}

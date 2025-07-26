@@ -96,7 +96,15 @@ class EventService:
                 await self._process_pending_events()
 
                 # Set up connection close callback for automatic reconnection
-                self.connection.add_close_callback(self._on_connection_closed)
+                try:
+                    if hasattr(self.connection, 'add_close_callback'):
+                        self.connection.add_close_callback(self._on_connection_closed)
+                    elif hasattr(self.connection, 'close_callbacks'):
+                        self.connection.close_callbacks.add(self._on_connection_closed)
+                    else:
+                        logger.warning("Connection close callback not supported in this aio_pika version")
+                except Exception as e:
+                    logger.warning(f"Failed to set up connection close callback: {e}")
 
                 return  # Success, exit retry loop
 

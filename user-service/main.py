@@ -13,6 +13,8 @@ import sys
 import logging
 import secrets
 
+# Configure logging
+logger = logging.getLogger(__name__)
 
 # Add parent directory to path for shared imports
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -179,17 +181,28 @@ async def login(
         ip_address = request.client.host
         user_agent = request.headers.get("User-Agent")
 
+        # Ensure we start with a clean transaction
+        await db.rollback()
+
         # Check account lockout
         is_locked, locked_until = await rate_limit_service.check_account_lockout(db, login_data.email)
         if is_locked:
-            # Record failed attempt
-            await rate_limit_service.record_login_attempt(
-                db, login_data.email, ip_address, user_agent, False, "account_locked"
-            )
+            # Record failed attempt in separate transaction to avoid transaction conflicts
+            try:
+                await rate_limit_service.record_login_attempt(
+                    db, login_data.email, ip_address, user_agent, False, "account_locked"
+                )
+                await db.commit()
+            except Exception as e:
+                await db.rollback()
+                logger.warning(f"Failed to record login attempt: {e}")
 
-            # Increment rate limit counters
-            await rate_limit_service.increment_login_attempts(f"ip:{ip_address}")
-            await rate_limit_service.increment_login_attempts(f"email:{login_data.email}")
+            # Increment rate limit counters (Redis operations - no transaction needed)
+            try:
+                await rate_limit_service.increment_login_attempts(f"ip:{ip_address}")
+                await rate_limit_service.increment_login_attempts(f"email:{login_data.email}")
+            except Exception as e:
+                logger.warning(f"Failed to increment rate limit counters: {e}")
 
             raise HTTPException(
                 status_code=status.HTTP_423_LOCKED,
@@ -197,23 +210,43 @@ async def login(
                 headers={"Retry-After": "1800"}  # 30 minutes
             )
 
-        # Authenticate user
-        user = await user_service.authenticate_user(db, login_data.email, login_data.password)
+        # Authenticate user with a fresh database session to avoid transaction conflicts
+        from app.core.database import AsyncSessionLocal
+        async with AsyncSessionLocal() as auth_db:
+            try:
+                user = await user_service.authenticate_user(auth_db, login_data.email, login_data.password)
+            except Exception as e:
+                logger.error(f"Authentication database error: {e}")
+                await auth_db.rollback()
+                user = None
         if not user:
-            # Record failed attempt
-            await rate_limit_service.record_login_attempt(
-                db, login_data.email, ip_address, user_agent, False, "invalid_credentials"
-            )
+            # Handle failed authentication with proper transaction management
+            try:
+                await rate_limit_service.record_login_attempt(
+                    db, login_data.email, ip_address, user_agent, False, "invalid_credentials"
+                )
+                await db.commit()
+            except Exception as e:
+                await db.rollback()
+                logger.warning(f"Failed to record failed login attempt: {e}")
 
-            # Log security event
-            await security_event_service.log_security_event(
-                db, SecurityEventType.LOGIN_FAILED, None, ip_address, user_agent,
-                {"email": login_data.email, "reason": "invalid_credentials"}
-            )
+            # Log security event in separate transaction
+            try:
+                await security_event_service.log_security_event(
+                    db, SecurityEventType.LOGIN_FAILED, None, ip_address, user_agent,
+                    {"email": login_data.email, "reason": "invalid_credentials"}
+                )
+                await db.commit()
+            except Exception as e:
+                await db.rollback()
+                logger.warning(f"Failed to log security event: {e}")
 
-            # Increment rate limit counters
-            await rate_limit_service.increment_login_attempts(f"ip:{ip_address}")
-            await rate_limit_service.increment_login_attempts(f"email:{login_data.email}")
+            # Increment rate limit counters (Redis operations)
+            try:
+                await rate_limit_service.increment_login_attempts(f"ip:{ip_address}")
+                await rate_limit_service.increment_login_attempts(f"email:{login_data.email}")
+            except Exception as e:
+                logger.warning(f"Failed to increment rate limit counters: {e}")
 
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
@@ -221,10 +254,15 @@ async def login(
             )
 
         if not user.is_active:
-            # Record failed attempt
-            await rate_limit_service.record_login_attempt(
-                db, login_data.email, ip_address, user_agent, False, "account_inactive", str(user.id)
-            )
+            # Record failed attempt in separate transaction
+            try:
+                await rate_limit_service.record_login_attempt(
+                    db, login_data.email, ip_address, user_agent, False, "account_inactive", str(user.id)
+                )
+                await db.commit()
+            except Exception as e:
+                await db.rollback()
+                logger.warning(f"Failed to record inactive account attempt: {e}")
 
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
@@ -262,31 +300,59 @@ async def login(
         ip_address = request.client.host
         user_agent = request.headers.get("User-Agent")
 
-        # Create session with tokens
-        session_data = await jwt_service.create_user_session(
-            db=db,
-            user=user,
-            ip_address=ip_address,
-            user_agent=user_agent,
-            remember_me=login_data.remember_me
-        )
+        # Create session with tokens using a fresh database session
+        try:
+            from app.core.database import AsyncSessionLocal
+            async with AsyncSessionLocal() as session_db:
+                session_data = await jwt_service.create_user_session(
+                    db=session_db,
+                    user=user,
+                    ip_address=ip_address,
+                    user_agent=user_agent,
+                    remember_me=login_data.remember_me
+                )
 
-        # Update last login
-        await user_service.update_last_login(db, user.id)
+                # Update last login in the same transaction
+                await user_service.update_last_login(session_db, user.id)
 
-        # Record successful login
-        await rate_limit_service.record_login_attempt(
-            db, login_data.email, ip_address, user_agent, True, None, str(user.id)
-        )
+                # Commit the session creation transaction
+                await session_db.commit()
 
-        # Log security event
-        await security_event_service.log_security_event(
-            db, SecurityEventType.LOGIN_SUCCESS, str(user.id), ip_address, user_agent,
-            {"remember_me": login_data.remember_me}
-        )
+        except Exception as e:
+            logger.error(f"Failed to create user session: {e}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Login failed due to session creation error"
+            )
+
+        # Record successful login in separate transaction
+        try:
+            await rate_limit_service.record_login_attempt(
+                db, login_data.email, ip_address, user_agent, True, None, str(user.id)
+            )
+            await db.commit()
+        except Exception as e:
+            await db.rollback()
+            logger.warning(f"Failed to record successful login: {e}")
+
+        # Log security event in separate transaction
+        try:
+            await security_event_service.log_security_event(
+                db, SecurityEventType.LOGIN_SUCCESS, str(user.id), ip_address, user_agent,
+                {"remember_me": login_data.remember_me}
+            )
+            await db.commit()
+        except Exception as e:
+            await db.rollback()
+            logger.warning(f"Failed to log security event: {e}")
 
         # Reset failed attempts on successful login
-        await rate_limit_service.reset_failed_attempts(db, login_data.email)
+        try:
+            await rate_limit_service.reset_failed_attempts(db, login_data.email)
+            await db.commit()
+        except Exception as e:
+            await db.rollback()
+            logger.warning(f"Failed to reset failed attempts: {e}")
 
         return EnhancedTokenResponse(
             access_token=session_data["access_token"],

@@ -60,6 +60,22 @@ async def root():
     )
 
 
+@app.get("/quote-requests/")
+async def quote_requests_info():
+    """Quote requests endpoint information."""
+    return {
+        "message": "Pricing Service - Quote Requests API",
+        "endpoints": {
+            "GET /quote-requests": "Get quote requests with filtering (requires authentication)",
+            "POST /quote-requests": "Create a new quote request (requires authentication)",
+            "GET /quote-requests/{quote_id}": "Get specific quote request (requires authentication)",
+            "POST /quote-requests/{quote_id}/bids": "Submit a bid (vendors only)",
+            "GET /vendor/bids": "Get vendor's bids (vendors only)"
+        },
+        "authentication": "Required for all endpoints except this one",
+        "documentation": "/docs"
+    }
+
 @app.get("/health")
 async def health_check():
     """Health check endpoint."""

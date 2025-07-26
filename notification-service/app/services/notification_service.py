@@ -47,14 +47,16 @@ class NotificationService:
         )
         return result.scalar_one_or_none()
 
-    async def get_user_notifications(self, db: AsyncSession, 
+    async def get_user_notifications(self, db: AsyncSession,
         user_id: str,
         page: int = 1,
         size: int = 20,
         unread_only: bool = False
     ) -> tuple[List[Notification], int]:
         """Get notifications for a user with pagination."""
-        query = select(Notification).where(Notification.user_id == user_id)
+        import uuid
+        user_uuid = uuid.UUID(user_id) if isinstance(user_id, str) else user_id
+        query = select(Notification).where(Notification.user_id == user_uuid)
         
         if unread_only:
             query = query.where(Notification.is_read == False)
@@ -91,10 +93,12 @@ class NotificationService:
 
     async def mark_all_notifications_read(self, db: AsyncSession, user_id: str) -> int:
         """Mark all notifications as read for a user."""
+        import uuid
+        user_uuid = uuid.UUID(user_id) if isinstance(user_id, str) else user_id
         result = await db.execute(
             update(Notification)
             .where(and_(
-                Notification.user_id == user_id,
+                Notification.user_id == user_uuid,
                 Notification.is_read == False
             ))
             .values(is_read=True, read_at=datetime.utcnow())
@@ -105,11 +109,14 @@ class NotificationService:
 
     async def delete_notification(self, db: AsyncSession, notification_id: str, user_id: str) -> bool:
         """Delete a notification."""
+        import uuid
+        user_uuid = uuid.UUID(user_id) if isinstance(user_id, str) else user_id
+        notification_uuid = uuid.UUID(notification_id) if isinstance(notification_id, str) else notification_id
         result = await db.execute(
             delete(Notification)
             .where(and_(
-                Notification.id == notification_id,
-                Notification.user_id == user_id
+                Notification.id == notification_uuid,
+                Notification.user_id == user_uuid
             ))
         )
         await db.commit()
@@ -178,10 +185,12 @@ class NotificationService:
 
     async def get_unread_count(self, db: AsyncSession, user_id: str) -> int:
         """Get the count of unread notifications for a user."""
+        import uuid
+        user_uuid = uuid.UUID(user_id) if isinstance(user_id, str) else user_id
         result = await db.execute(
             select(func.count(Notification.id))
             .where(and_(
-                Notification.user_id == user_id,
+                Notification.user_id == user_uuid,
                 Notification.is_read == False
             ))
         )

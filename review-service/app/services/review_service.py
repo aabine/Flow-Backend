@@ -76,6 +76,41 @@ class ReviewService:
         )
         return result.scalar_one_or_none()
 
+    async def get_reviews(
+        self,
+        db: AsyncSession,
+        filters: Optional[ReviewFilters] = None,
+        page: int = 1,
+        size: int = 20
+    ) -> tuple[List[Review], int]:
+        """Get all reviews with pagination and filtering."""
+        query = select(Review)
+
+        # Apply filters
+        if filters:
+            if filters.rating:
+                query = query.where(Review.rating == filters.rating)
+            if filters.review_type:
+                query = query.where(Review.review_type == filters.review_type)
+
+        # Count total
+        count_result = await db.execute(
+            select(func.count()).select_from(query.subquery())
+        )
+        total = count_result.scalar_one()
+
+        # Get paginated results
+        query = (
+            query.order_by(Review.created_at.desc())
+            .offset((page - 1) * size)
+            .limit(size)
+        )
+
+        result = await db.execute(query)
+        reviews = result.scalars().all()
+
+        return list(reviews), total
+
     async def get_reviews_for_user(
         self, 
         db: AsyncSession, 

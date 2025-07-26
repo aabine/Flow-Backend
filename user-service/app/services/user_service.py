@@ -23,7 +23,7 @@ class UserService:
         
         db_user = User(
             email=user_data.email,
-            hashed_password=hashed_password,
+            password_hash=hashed_password,
             role=user_data.role
         )
         
@@ -59,7 +59,7 @@ class UserService:
         user = await self.get_user_by_email(db, email)
         if not user:
             return None
-        if not verify_password(password, user.hashed_password):
+        if not verify_password(password, user.password_hash):
             return None
         return user
     
@@ -79,7 +79,7 @@ class UserService:
         """Update user's last login timestamp."""
         stmt = update(User).where(User.id == user_id).values(last_login=datetime.utcnow())
         await db.execute(stmt)
-        await db.commit()
+        # Note: Commit is handled by the caller to maintain transaction control
     
     async def deactivate_user(self, db: AsyncSession, user_id: str) -> bool:
         """Deactivate a user."""
