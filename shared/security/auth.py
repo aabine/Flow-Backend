@@ -3,7 +3,7 @@ Shared authentication and authorization utilities for the Oxygen Supply Platform
 Implements JWT token validation, role-based access control, and security utilities.
 """
 
-import jwt
+from jose import jwt
 import bcrypt
 import secrets
 import hashlib

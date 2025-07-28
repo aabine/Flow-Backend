@@ -12,11 +12,10 @@ from typing import List
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))))
 
 from shared.database.service_init import create_service_init_function
+from app.models.payment import Payment, PaymentSplit, PaymentWebhook
+from app.core.database import Base
 
 logger = logging.getLogger(__name__)
-
-# For now, we'll create a basic structure since payment models might not be fully defined
-# This can be expanded when the payment service models are available
 
 # Define indexes for payment service tables
 PAYMENT_SERVICE_INDEXES = [
@@ -103,14 +102,63 @@ async def create_payments_table(engine):
         logger.error(f"❌ Failed to create payments table: {e}")
         raise
 
+async def create_payment_functions(engine):
+    """Create PostgreSQL functions for payment operations"""
+    from sqlalchemy import text
+
+    try:
+        async with engine.begin() as conn:
+            # Function to calculate platform fee
+            await conn.execute(text("""
+                CREATE OR REPLACE FUNCTION calculate_platform_fee(amount DECIMAL, fee_percentage DECIMAL DEFAULT 2.5)
+                RETURNS DECIMAL AS $$
+                BEGIN
+                    RETURN ROUND(amount * fee_percentage / 100.0, 2);
+                END;
+                $$ LANGUAGE plpgsql;
+            """))
+
+            logger.info("✅ Created payment service functions")
+
+    except Exception as e:
+        logger.error(f"❌ Failed to create functions: {e}")
+        raise
+
+async def seed_payment_data(engine):
+    """Seed sample payment data for testing"""
+    from sqlalchemy.ext.asyncio import AsyncSession
+    from sqlalchemy import select
+
+    try:
+        async with AsyncSession(engine) as session:
+            # Check if payment data already exists
+            result = await session.execute(select(Payment).limit(1))
+            if result.scalar_one_or_none():
+                logger.info("ℹ️ Sample payment data already exists")
+                return
+
+            # This would be where you add sample data
+            # For now, just log that we're ready for data
+            logger.info("ℹ️ Ready for payment data seeding (implement as needed)")
+
+    except Exception as e:
+        logger.error(f"❌ Failed to seed sample payment data: {e}")
+        raise
+
+# Define enum data to seed
+PAYMENT_SERVICE_ENUM_DATA = {
+    # No enum tables for payment service currently
+}
+
 # Create the initialization function for payment service
 initialize_payment_database = create_service_init_function(
     service_name="payment",
-    models=[],  # Will be populated when payment models are available
+    models=[Base],  # Pass the Base class instead of model instances
     indexes=PAYMENT_SERVICE_INDEXES,
     constraints=PAYMENT_SERVICE_CONSTRAINTS,
     extensions=PAYMENT_SERVICE_EXTENSIONS,
-    custom_functions=[create_payment_enum_types, create_payments_table]
+    enum_data=PAYMENT_SERVICE_ENUM_DATA,
+    custom_functions=[create_payment_enum_types, create_payment_functions, seed_payment_data]
 )
 
 async def init_payment_database() -> bool:
