@@ -27,7 +27,7 @@ analytics_service = AnalyticsService()
 
 @router.get("/financial-summary")
 async def get_financial_summary(
-    period: str = Query("30d", regex="^(7d|30d|90d|1y)$"),
+    period: str = Query("30d", pattern="^(7d|30d|90d|1y)$"),
     current_admin: dict = Depends(get_current_admin_user),
     db: AsyncSession = Depends(get_db)
 ):
@@ -58,7 +58,7 @@ async def get_financial_summary(
 
 @router.get("/geographic-analytics")
 async def get_geographic_analytics(
-    period: str = Query("30d", regex="^(7d|30d|90d)$"),
+    period: str = Query("30d", pattern="^(7d|30d|90d)$"),
     current_admin: dict = Depends(get_current_admin_user),
     db: AsyncSession = Depends(get_db)
 ):
@@ -86,7 +86,7 @@ async def get_geographic_analytics(
 
 @router.get("/performance-metrics")
 async def get_performance_metrics(
-    period: str = Query("24h", regex="^(1h|24h|7d)$"),
+    period: str = Query("24h", pattern="^(1h|24h|7d)$"),
     current_admin: dict = Depends(get_current_admin_user),
     db: AsyncSession = Depends(get_db)
 ):
@@ -112,7 +112,7 @@ async def get_performance_metrics(
 
 @router.get("/business-insights")
 async def get_business_insights(
-    period: str = Query("30d", regex="^(7d|30d|90d)$"),
+    period: str = Query("30d", pattern="^(7d|30d|90d)$"),
     current_admin: dict = Depends(get_current_admin_user),
     db: AsyncSession = Depends(get_db)
 ):
@@ -262,7 +262,7 @@ async def get_monthly_report(
 
 @router.get("/trends/comparison")
 async def get_trend_comparison(
-    metric: str = Query(..., regex="^(orders|revenue|users|reviews)$"),
+    metric: str = Query(..., pattern="^(orders|revenue|users|reviews)$"),
     periods: List[str] = Query(["7d", "30d"], description="Periods to compare"),
     current_admin: dict = Depends(get_current_admin_user),
     db: AsyncSession = Depends(get_db)

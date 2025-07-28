@@ -122,6 +122,9 @@ services:
       - MASTER_ENCRYPTION_KEY=82rdUzSkgoVNxN9Jx3igzLNZItbl_Ss9LpRVTeSKZt4=
       - ENCRYPTION_KEY=hARKbgFcvqYfy4kiAH361aJtgkCG2jZSK--AS7eHNhk=
       - SECRET_KEY=oxygen_platform_secret_key_2024_production_ready
+      - DB_INIT_MAX_RETRIES=10
+      - DB_INIT_INITIAL_DELAY=1.0
+      - DB_INIT_MAX_DELAY=30.0
     depends_on:
       postgres:
         condition: service_healthy
@@ -145,6 +148,9 @@ services:
       - LOCATION_SERVICE_URL=http://location-service:8003
       - NOTIFICATION_SERVICE_URL=http://notification-service:8010
       - PRICING_SERVICE_URL=http://pricing-service:8006
+      - DB_INIT_MAX_RETRIES=10
+      - DB_INIT_INITIAL_DELAY=1.0
+      - DB_INIT_MAX_DELAY=30.0
     depends_on:
       postgres:
         condition: service_healthy
@@ -167,6 +173,9 @@ services:
       - REDIS_URL=redis://redis:6379/0
       - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672/
       - WEBSOCKET_SERVICE_URL=http://websocket-service:8012
+      - DB_INIT_MAX_RETRIES=10
+      - DB_INIT_INITIAL_DELAY=1.0
+      - DB_INIT_MAX_DELAY=30.0
     depends_on:
       postgres:
         condition: service_healthy
@@ -190,6 +199,9 @@ services:
       - PAYSTACK_SECRET_KEY=${PAYSTACK_SECRET_KEY}
       - PAYSTACK_PUBLIC_KEY=${PAYSTACK_PUBLIC_KEY}
       - PLATFORM_FEE_PERCENTAGE=5.0
+      - DB_INIT_MAX_RETRIES=10
+      - DB_INIT_INITIAL_DELAY=1.0
+      - DB_INIT_MAX_DELAY=30.0
     depends_on:
       postgres:
         condition: service_healthy

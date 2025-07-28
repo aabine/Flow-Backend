@@ -11,7 +11,7 @@ import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 from app.core.database import Base
-from app.main import app
+from main import app
 
 # Test database URL
 TEST_DATABASE_URL = "postgresql+asyncpg://user:password@localhost:5432/test_inventory_db"

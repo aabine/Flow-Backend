@@ -84,7 +84,7 @@ class PriceComparisonRequest(BaseModel):
     longitude: float = Field(..., ge=-180, le=180)
     radius_km: float = Field(50.0, gt=0, le=200)
     include_emergency_pricing: bool = False
-    sort_by: str = Field("price", regex="^(price|distance|rating|delivery_time)$")
+    sort_by: str = Field("price", pattern="^(price|distance|rating|delivery_time)$")
     max_results: int = Field(10, ge=1, le=50)
 
 
@@ -180,11 +180,11 @@ class PriceAlertCreate(BaseModel):
     """Schema for creating price alert."""
     product_id: str
     vendor_id: Optional[str] = None
-    alert_type: str = Field(..., regex="^(price_drop|price_increase|availability|new_vendor)$")
+    alert_type: str = Field(..., pattern="^(price_drop|price_increase|availability|new_vendor)$")
     target_price: Optional[Decimal] = Field(None, gt=0)
     price_threshold_percentage: Optional[Decimal] = Field(None, gt=0, le=100)
-    notification_method: str = Field("email", regex="^(email|sms|push|in_app)$")
-    frequency: str = Field("immediate", regex="^(immediate|daily|weekly)$")
+    notification_method: str = Field("email", pattern="^(email|sms|push|in_app)$")
+    frequency: str = Field("immediate", pattern="^(immediate|daily|weekly)$")
     expires_at: Optional[datetime] = None
 
 

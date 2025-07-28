@@ -20,9 +20,11 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from app.core.config import get_settings
 from app.core.database import get_db
+from app.core.db_init import init_inventory_database
 from app.api.inventory import router as inventory_router
 from app.api.stock_movements import router as stock_movements_router
 from app.api.product_catalog import router as product_catalog_router
+from app.api.cylinders import router as cylinders_router
 from app.services.event_service import event_service
 from shared.models import APIResponse
 
@@ -33,6 +35,15 @@ async def lifespan(app: FastAPI):
     logger.info("🚀 Starting Inventory Service...")
 
     try:
+        # Initialize database
+        logger.info("🔧 Initializing database...")
+        db_success = await init_inventory_database()
+        if db_success:
+            logger.info("✅ Database initialization completed")
+        else:
+            logger.error("❌ Database initialization failed")
+            # Continue startup but log the error
+
         # Start event service (graceful startup)
         try:
             await event_service.connect()
@@ -104,6 +115,7 @@ async def inventory_info():
 app.include_router(inventory_router, prefix="/inventory", tags=["inventory"])
 app.include_router(stock_movements_router, prefix="/stock-movements", tags=["stock-movements"])
 app.include_router(product_catalog_router, prefix="/catalog", tags=["product-catalog"])
+app.include_router(cylinders_router, prefix="/cylinders", tags=["cylinder-management"])
 
 
 @app.get("/health")

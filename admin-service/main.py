@@ -22,6 +22,7 @@ from app.api.admin_management import router as admin_management_router
 from app.api.analytics import router as analytics_router
 from app.core.config import get_settings
 from app.core.database import init_db
+from app.core.db_init import init_admin_database
 from app.services.event_listener_service import event_listener
 from app.services.system_monitoring_service import SystemMonitoringService
 
@@ -38,9 +39,13 @@ async def lifespan(app: FastAPI):
     logger.info("🚀 Starting Admin Service...")
 
     try:
-        # Initialize database
-        await init_db()
-        logger.info("✅ Database initialized")
+        # Initialize database with per-service initialization
+        db_success = await init_admin_database()
+        if db_success:
+            logger.info("✅ Database initialization completed")
+        else:
+            logger.error("❌ Database initialization failed")
+            # Don't exit - let the service start but log the error
 
         # Start event listener service (graceful startup)
         try:

@@ -9,8 +9,8 @@ import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))))
 
 from app.services.inventory_service import InventoryService
-from app.schemas.inventory import InventoryCreate, StockAdjustment, ReservationCreate
-from app.models.inventory import Inventory, InventoryLocation, StockMovement, Reservation
+from app.schemas.inventory import InventoryCreate, StockAdjustment, StockReservationCreate
+from app.models.inventory import Inventory, StockMovement, StockReservation
 from shared.models import CylinderSize
 
 
@@ -130,7 +130,7 @@ class TestInventoryService:
     async def test_create_reservation_success(self, inventory_service, db_session, sample_inventory_item):
         """Test successful reservation creation."""
         
-        reservation_data = ReservationCreate(
+        reservation_data = StockReservationCreate(
             inventory_id=str(sample_inventory_item.id),
             order_id="order-123",
             quantity=10,
@@ -151,7 +151,7 @@ class TestInventoryService:
     async def test_create_reservation_insufficient_stock(self, inventory_service, db_session, sample_inventory_item):
         """Test reservation creation with insufficient stock."""
         
-        reservation_data = ReservationCreate(
+        reservation_data = StockReservationCreate(
             inventory_id=str(sample_inventory_item.id),
             order_id="order-123",
             quantity=1000,  # More than available
@@ -168,7 +168,7 @@ class TestInventoryService:
         """Test successful reservation confirmation."""
         
         # First create a reservation
-        reservation_data = ReservationCreate(
+        reservation_data = StockReservationCreate(
             inventory_id=str(sample_inventory_item.id),
             order_id="order-123",
             quantity=10,
@@ -197,7 +197,7 @@ class TestInventoryService:
         """Test successful reservation cancellation."""
         
         # First create a reservation
-        reservation_data = ReservationCreate(
+        reservation_data = StockReservationCreate(
             inventory_id=str(sample_inventory_item.id),
             order_id="order-123",
             quantity=10,

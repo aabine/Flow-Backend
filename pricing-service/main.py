@@ -11,6 +11,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from app.core.config import get_settings
 from app.core.database import init_db, close_db, check_db_health
+from app.core.db_init import init_pricing_database
 from app.api import vendors, products, pricing
 from app.services.event_service import event_service
 
@@ -26,21 +27,17 @@ async def lifespan(app: FastAPI):
     # Startup
     logger.info("🚀 Starting Pricing Service...")
     
-    # Initialize database
+    # Initialize database with per-service initialization
     try:
-        await init_db()
-        logger.info("✅ Database initialized")
+        db_success = await init_pricing_database()
+        if db_success:
+            logger.info("✅ Database initialization completed")
+        else:
+            logger.error("❌ Database initialization failed")
+            # Don't exit - let the service start but log the error
     except Exception as e:
-        logger.error(f"❌ Database initialization failed: {e}")
-        raise
-    
-    # Check database health
-    try:
-        await check_db_health()
-        logger.info("✅ Database health check passed")
-    except Exception as e:
-        logger.error(f"❌ Database health check failed: {e}")
-        raise
+        logger.error(f"❌ Database initialization error: {e}")
+        # Don't raise - let the service start but log the error
     
     # Initialize event service
     try:

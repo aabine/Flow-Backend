@@ -1,4 +1,5 @@
 from sqlalchemy import Column, String, Integer, Float, DateTime, Boolean, Text, ForeignKey, Enum
+from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from datetime import datetime
@@ -15,9 +16,9 @@ from shared.models import UserRole
 
 class Location(Base):
     __tablename__ = "locations"
-    
-    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
-    user_id = Column(String, nullable=False, index=True)
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), nullable=False, index=True)
     name = Column(String, nullable=False)
     address = Column(Text, nullable=False)
     city = Column(String, nullable=False)
@@ -33,8 +34,8 @@ class Location(Base):
 
 class EmergencyZone(Base):
     __tablename__ = "emergency_zones"
-    
-    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name = Column(String, nullable=False)
     description = Column(Text, nullable=True)
     center_latitude = Column(Float, nullable=False)
@@ -43,7 +44,7 @@ class EmergencyZone(Base):
     severity_level = Column(String, nullable=False)  # 'low', 'medium', 'high', 'critical'
     is_active = Column(Boolean, default=False)
     alert_message = Column(Text, nullable=True)
-    created_by = Column(String, nullable=False)
+    created_by = Column(UUID(as_uuid=True), nullable=False)
     activated_at = Column(DateTime(timezone=True), nullable=True)
     deactivated_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
@@ -52,9 +53,9 @@ class EmergencyZone(Base):
 
 class ServiceArea(Base):
     __tablename__ = "service_areas"
-    
-    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
-    vendor_id = Column(String, nullable=False, index=True)
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    vendor_id = Column(UUID(as_uuid=True), nullable=False, index=True)
     name = Column(String, nullable=False)
     center_latitude = Column(Float, nullable=False)
     center_longitude = Column(Float, nullable=False)

@@ -19,6 +19,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from app.api.reviews import router as reviews_router
 from app.core.config import get_settings
 from app.core.database import init_db
+from app.core.db_init import init_review_database
 from app.services.event_service import event_service
 
 settings = get_settings()
@@ -30,9 +31,13 @@ async def lifespan(app: FastAPI):
     logger.info("🚀 Starting Review Service...")
 
     try:
-        # Initialize database
-        await init_db()
-        logger.info("✅ Database initialized")
+        # Initialize database with per-service initialization
+        db_success = await init_review_database()
+        if db_success:
+            logger.info("✅ Database initialization completed")
+        else:
+            logger.error("❌ Database initialization failed")
+            # Don't exit - let the service start but log the error
 
         # Start event service (graceful startup)
         try:

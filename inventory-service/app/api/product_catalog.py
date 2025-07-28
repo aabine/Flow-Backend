@@ -16,7 +16,7 @@ from app.schemas.inventory import (
     AvailabilityCheck, AvailabilityResponse, BulkAvailabilityCheck, BulkAvailabilityResponse
 )
 from shared.models import APIResponse, UserRole, CylinderSize
-from shared.auth import get_current_user
+from shared.security.auth import get_current_user
 
 router = APIRouter()
 inventory_service = InventoryService()
@@ -67,7 +67,7 @@ async def get_nearby_products(
     quantity: int = Query(1, gt=0),
     max_distance_km: float = Query(50.0, gt=0),
     is_emergency: bool = Query(False),
-    sort_by: str = Query("distance", regex="^(distance|price|rating|delivery_time)$"),
+    sort_by: str = Query("distance", pattern="^(distance|price|rating|delivery_time)$"),
     current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):

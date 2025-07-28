@@ -12,6 +12,7 @@ from contextlib import asynccontextmanager
 
 from app.core.config import get_settings
 from app.core.database import get_db
+from app.core.db_init import init_payment_database
 from app.models.payment import Payment, PaymentSplit, PaymentWebhook
 from app.schemas.payment import (
     PaymentCreate, PaymentResponse, PaymentInitializeResponse,
@@ -31,10 +32,24 @@ event_service = EventService()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
+    import logging
+    logger = logging.getLogger(__name__)
+    logger.info("🚀 Starting Payment Service...")
+
+    # Initialize database
+    logger.info("🔧 Initializing database...")
+    db_success = await init_payment_database()
+    if db_success:
+        logger.info("✅ Database initialization completed")
+    else:
+        logger.error("❌ Database initialization failed")
+
     db_gen = get_db()
     db = await anext(db_gen)
     global payment_service
     payment_service = PaymentService(db)
+
+    logger.info("🎉 Payment Service startup completed successfully!")
     yield
     # Shutdown
     await db.close()

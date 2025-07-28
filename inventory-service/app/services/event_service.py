@@ -247,7 +247,52 @@ class EventService:
 
         except Exception as e:
             print(f"Error handling order completion: {e}")
-    
+
+    # Cylinder-specific event methods
+    async def publish_cylinder_event(self, event_type: str, cylinder_data: Dict[str, Any]):
+        """Publish cylinder-specific events with enhanced data."""
+        enhanced_data = {
+            **cylinder_data,
+            "timestamp": datetime.utcnow().isoformat(),
+            "service": "inventory-service",
+            "category": "cylinder_management"
+        }
+
+        await self.publish_event(f"cylinder.{event_type}", enhanced_data)
+
+    async def publish_maintenance_event(self, event_type: str, maintenance_data: Dict[str, Any]):
+        """Publish maintenance-specific events."""
+        enhanced_data = {
+            **maintenance_data,
+            "timestamp": datetime.utcnow().isoformat(),
+            "service": "inventory-service",
+            "category": "cylinder_maintenance"
+        }
+
+        await self.publish_event(f"maintenance.{event_type}", enhanced_data)
+
+    async def publish_quality_event(self, event_type: str, quality_data: Dict[str, Any]):
+        """Publish quality check events."""
+        enhanced_data = {
+            **quality_data,
+            "timestamp": datetime.utcnow().isoformat(),
+            "service": "inventory-service",
+            "category": "quality_control"
+        }
+
+        await self.publish_event(f"quality.{event_type}", enhanced_data)
+
+    async def publish_allocation_event(self, event_type: str, allocation_data: Dict[str, Any]):
+        """Publish cylinder allocation events."""
+        enhanced_data = {
+            **allocation_data,
+            "timestamp": datetime.utcnow().isoformat(),
+            "service": "inventory-service",
+            "category": "cylinder_allocation"
+        }
+
+        await self.publish_event(f"allocation.{event_type}", enhanced_data)
+
     async def publish_event(
         self,
         event_type: EventType,

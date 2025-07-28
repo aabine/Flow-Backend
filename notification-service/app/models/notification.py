@@ -1,6 +1,7 @@
 from datetime import datetime
 from enum import Enum
 from sqlalchemy import Column, String, Text, Boolean, DateTime, ForeignKey, Enum as SQLEnum, JSON
+from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 import uuid
@@ -38,8 +39,8 @@ class NotificationStatus(str, Enum):
 class Notification(Base):
     __tablename__ = "notifications"
 
-    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
-    user_id = Column(String, nullable=False, index=True)
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), nullable=False, index=True)
     title = Column(String, nullable=False)
     message = Column(Text, nullable=False)
     notification_type = Column(SQLEnum(NotificationType), nullable=False, default=NotificationType.INFO)
@@ -47,7 +48,7 @@ class Notification(Base):
     channel = Column(SQLEnum(NotificationChannel), default=NotificationChannel.IN_APP)
     is_read = Column(Boolean, default=False)
     metadata_ = Column("metadata", JSON, nullable=True)
-    template_id = Column(String, ForeignKey("notification_templates.id"), nullable=True)
+    template_id = Column(UUID(as_uuid=True), ForeignKey("notification_templates.id"), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
     read_at = Column(DateTime(timezone=True), nullable=True)
@@ -60,7 +61,7 @@ class Notification(Base):
 class NotificationTemplate(Base):
     __tablename__ = "notification_templates"
 
-    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name = Column(String, unique=True, nullable=False)
     subject = Column(String, nullable=False)
     body = Column(Text, nullable=False)
@@ -78,8 +79,8 @@ class NotificationTemplate(Base):
 class NotificationPreference(Base):
     __tablename__ = "notification_preferences"
 
-    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
-    user_id = Column(String, nullable=False, unique=True)
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), nullable=False, unique=True)
     email_enabled = Column(Boolean, default=True)
     sms_enabled = Column(Boolean, default=True)
     push_enabled = Column(Boolean, default=True)

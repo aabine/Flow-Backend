@@ -242,8 +242,8 @@ class ProductCatalogRequest(BaseModel):
     quantity: int = Field(1, gt=0)
     max_distance_km: float = Field(50.0, gt=0)
     is_emergency: bool = False
-    sort_by: str = Field("distance", regex="^(distance|price|rating|delivery_time)$")
-    sort_order: str = Field("asc", regex="^(asc|desc)$")
+    sort_by: str = Field("distance", pattern="^(distance|price|rating|delivery_time)$")
+    sort_order: str = Field("asc", pattern="^(asc|desc)$")
 
 
 class ProductCatalogItem(BaseModel):

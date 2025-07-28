@@ -134,7 +134,7 @@ class ProductSearchRequest(BaseModel):
     latitude: Optional[float] = Field(None, ge=-90, le=90)
     longitude: Optional[float] = Field(None, ge=-180, le=180)
     radius_km: Optional[float] = Field(None, gt=0, le=200)
-    sort_by: str = Field("relevance", regex="^(relevance|price_asc|price_desc|rating|distance|newest)$")
+    sort_by: str = Field("relevance", pattern="^(relevance|price_asc|price_desc|rating|distance|newest)$")
     page: int = Field(1, ge=1)
     page_size: int = Field(20, ge=1, le=100)
 

@@ -17,12 +17,16 @@ from app.core.config import get_settings
 
 settings = get_settings()
 from app.core.websocket_manager import WebSocketManager
+from app.core.db_init import init_websocket_database
 from app.services.auth_service import AuthService
 from app.services.event_service import EventService
 from app.services.location_notification_service import LocationNotificationService
 from app.core.emergency_config import emergency_manager, EmergencyLevel
 from shared.models import UserRole, EventType
 from shared.exceptions import AuthException
+import logging
+
+logger = logging.getLogger(__name__)
 
 app = FastAPI(
     title="WebSocket Service",
@@ -37,6 +41,25 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Database initialization flag
+_db_initialized = False
+
+@app.on_event("startup")
+async def startup_event():
+    """Initialize database and services on startup."""
+    global _db_initialized
+    if not _db_initialized:
+        logger.info("🚀 Starting WebSocket Service...")
+        success = await init_websocket_database()
+        if success:
+            logger.info("✅ WebSocket Service database initialization completed")
+            _db_initialized = True
+        else:
+            logger.error("❌ WebSocket Service database initialization failed")
+            # Don't exit - let the service start but log the error
+    else:
+        logger.info("ℹ️ Database already initialized")
 
 # Initialize services
 auth_service = AuthService()

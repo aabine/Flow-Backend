@@ -69,7 +69,7 @@ async def get_admin_dashboard(
 
 @router.get("/kpis", response_model=DashboardKPI)
 async def get_dashboard_kpis(
-    period: str = Query("30d", regex="^(24h|7d|30d)$"),
+    period: str = Query("30d", pattern="^(24h|7d|30d)$"),
     current_admin: dict = Depends(get_current_admin_user),
     db: AsyncSession = Depends(get_db)
 ):
@@ -83,7 +83,7 @@ async def get_dashboard_kpis(
 
 @router.get("/analytics/orders", response_model=OrderAnalytics)
 async def get_order_analytics(
-    period: str = Query("30d", regex="^(7d|30d|90d)$"),
+    period: str = Query("30d", pattern="^(7d|30d|90d)$"),
     current_admin: dict = Depends(get_current_admin_user),
     db: AsyncSession = Depends(get_db)
 ):
@@ -97,7 +97,7 @@ async def get_order_analytics(
 
 @router.get("/analytics/revenue", response_model=RevenueAnalytics)
 async def get_revenue_analytics(
-    period: str = Query("30d", regex="^(7d|30d|90d)$"),
+    period: str = Query("30d", pattern="^(7d|30d|90d)$"),
     current_admin: dict = Depends(get_current_admin_user),
     db: AsyncSession = Depends(get_db)
 ):
@@ -111,7 +111,7 @@ async def get_revenue_analytics(
 
 @router.get("/analytics/users", response_model=UserAnalytics)
 async def get_user_analytics(
-    period: str = Query("30d", regex="^(7d|30d|90d)$"),
+    period: str = Query("30d", pattern="^(7d|30d|90d)$"),
     current_admin: dict = Depends(get_current_admin_user),
     db: AsyncSession = Depends(get_db)
 ):
@@ -125,7 +125,7 @@ async def get_user_analytics(
 
 @router.get("/analytics/reviews", response_model=ReviewAnalytics)
 async def get_review_analytics(
-    period: str = Query("30d", regex="^(7d|30d|90d)$"),
+    period: str = Query("30d", pattern="^(7d|30d|90d)$"),
     current_admin: dict = Depends(get_current_admin_user),
     db: AsyncSession = Depends(get_db)
 ):
@@ -179,7 +179,7 @@ async def get_system_overview(
 @router.get("/metrics/{service_name}")
 async def get_service_metrics(
     service_name: str,
-    metric_type: str = Query(..., regex="^(response_time|error_rate|order_count|revenue)$"),
+    metric_type: str = Query(..., pattern="^(response_time|error_rate|order_count|revenue)$"),
     hours: int = Query(24, ge=1, le=168),  # 1 hour to 1 week
     current_admin: dict = Depends(get_current_admin_user),
     db: AsyncSession = Depends(get_db)
@@ -219,7 +219,7 @@ async def trigger_metrics_collection(
 
 @router.get("/charts/order-trends")
 async def get_order_trends_chart(
-    period: str = Query("30d", regex="^(7d|30d|90d)$"),
+    period: str = Query("30d", pattern="^(7d|30d|90d)$"),
     current_admin: dict = Depends(get_current_admin_user),
     db: AsyncSession = Depends(get_db)
 ):
@@ -248,7 +248,7 @@ async def get_order_trends_chart(
 
 @router.get("/charts/revenue-breakdown")
 async def get_revenue_breakdown_chart(
-    period: str = Query("30d", regex="^(7d|30d|90d)$"),
+    period: str = Query("30d", pattern="^(7d|30d|90d)$"),
     current_admin: dict = Depends(get_current_admin_user),
     db: AsyncSession = Depends(get_db)
 ):
@@ -278,7 +278,7 @@ async def get_revenue_breakdown_chart(
 
 @router.get("/charts/user-growth")
 async def get_user_growth_chart(
-    period: str = Query("30d", regex="^(7d|30d|90d)$"),
+    period: str = Query("30d", pattern="^(7d|30d|90d)$"),
     current_admin: dict = Depends(get_current_admin_user),
     db: AsyncSession = Depends(get_db)
 ):

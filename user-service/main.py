@@ -49,6 +49,7 @@ from app.middleware.rate_limit_middleware import (RateLimitMiddleware, LoginRate
                                                  PasswordResetRateLimitMiddleware, EmailVerificationRateLimitMiddleware)
 from app.middleware.api_key_middleware import api_key_auth, service_auth, user_read_auth, admin_auth
 from app.utils.device_detection import get_device_info, format_session_info
+from app.core.db_init import init_user_database
 from shared.models import UserRole, APIResponse
 
 app = FastAPI(
@@ -56,6 +57,26 @@ app = FastAPI(
     description="User management and authentication service",
     version="1.0.0"
 )
+
+# Database initialization flag
+_db_initialized = False
+
+@app.on_event("startup")
+async def startup_event():
+    """Initialize database on startup."""
+    global _db_initialized
+    if not _db_initialized:
+        logger.info("🚀 Starting User Service...")
+        success = await init_user_database()
+        if success:
+            logger.info("✅ User Service database initialization completed")
+            _db_initialized = True
+        else:
+            logger.error("❌ User Service database initialization failed")
+            # Don't exit - let the service start but log the error
+            # In production, you might want to exit here
+    else:
+        logger.info("ℹ️ Database already initialized")
 
 # Authentication dependency for admin endpoints
 async def get_current_admin_user(

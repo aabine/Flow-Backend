@@ -1,7 +1,7 @@
 from sqlalchemy import Column, String, Float, DateTime, Boolean, Text, Integer, ForeignKey, Enum
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship
-from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.sql import func
 from datetime import datetime
 import uuid
 import enum
@@ -11,9 +11,8 @@ import os
 # Add parent directory to path for shared imports
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))))
 
+from app.core.database import Base
 from shared.models import CylinderSize
-
-Base = declarative_base()
 
 
 class DeliveryStatus(enum.Enum):
@@ -52,7 +51,7 @@ class Driver(Base):
     __tablename__ = "drivers"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    user_id = Column(String, nullable=False, unique=True)  # Reference to user service
+    user_id = Column(UUID(as_uuid=True), nullable=False, unique=True)  # Reference to user service
     driver_license = Column(String, nullable=False, unique=True)
     phone_number = Column(String, nullable=False)
     vehicle_type = Column(Enum(VehicleType), nullable=False)
@@ -64,8 +63,8 @@ class Driver(Base):
     rating = Column(Float, default=5.0)
     total_deliveries = Column(Integer, default=0)
     is_active = Column(Boolean, default=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
     # Relationships
     deliveries = relationship("Delivery", back_populates="driver")
@@ -76,8 +75,8 @@ class Delivery(Base):
     __tablename__ = "deliveries"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    order_id = Column(String, nullable=False, unique=True)  # Reference to order service
-    customer_id = Column(String, nullable=False)  # Reference to user service
+    order_id = Column(UUID(as_uuid=True), nullable=False, unique=True)  # Reference to order service
+    customer_id = Column(UUID(as_uuid=True), nullable=False)  # Reference to user service
     driver_id = Column(UUID(as_uuid=True), ForeignKey("drivers.id"), nullable=True)
     
     # Delivery details
@@ -111,8 +110,8 @@ class Delivery(Base):
     customer_signature = Column(String, nullable=True)  # Base64 encoded signature
     delivery_photo = Column(String, nullable=True)  # Photo URL
     
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
     # Relationships
     driver = relationship("Driver", back_populates="deliveries")
@@ -128,8 +127,8 @@ class DeliveryTracking(Base):
     location_lat = Column(Float, nullable=True)
     location_lng = Column(Float, nullable=True)
     notes = Column(Text, nullable=True)
-    timestamp = Column(DateTime, default=datetime.utcnow)
-    created_by = Column(String, nullable=False)  # User ID who created the update
+    timestamp = Column(DateTime(timezone=True), server_default=func.now())
+    created_by = Column(UUID(as_uuid=True), nullable=False)  # User ID who created the update
 
     # Relationships
     delivery = relationship("Delivery", back_populates="tracking_updates")
@@ -148,7 +147,7 @@ class DeliveryRoute(Base):
     status = Column(String, default="PLANNED")  # PLANNED, ACTIVE, COMPLETED
     started_at = Column(DateTime, nullable=True)
     completed_at = Column(DateTime, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     # Relationships
     driver = relationship("Driver", back_populates="routes")

@@ -11,6 +11,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from app.core.config import get_settings
 from app.core.database import get_db
+from app.core.db_init import init_location_database
 from app.models.location import Location, EmergencyZone, ServiceArea
 from app.schemas.location import (
     LocationCreate, LocationResponse, LocationUpdate,
@@ -36,6 +37,27 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Database initialization flag
+_db_initialized = False
+
+@app.on_event("startup")
+async def startup_event():
+    """Initialize database on startup."""
+    global _db_initialized
+    if not _db_initialized:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info("🚀 Starting Location Service...")
+        success = await init_location_database()
+        if success:
+            logger.info("✅ Location Service database initialization completed")
+            _db_initialized = True
+        else:
+            logger.error("❌ Location Service database initialization failed")
+            # Don't exit - let the service start but log the error
+    else:
+        logger.info("ℹ️ Database already initialized")
 
 location_service = LocationService()
 emergency_service = EmergencyService()

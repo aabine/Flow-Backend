@@ -11,6 +11,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(
 
 from app.core.config import get_settings
 from app.core.database import init_db, close_db, check_db_health
+from app.core.db_init import init_delivery_database
 from app.api import deliveries, drivers, routes
 from app.services.event_service import event_service
 
@@ -27,8 +28,13 @@ async def lifespan(app: FastAPI):
     # Startup
     logger.info("🚀 Starting Delivery Service...")
     try:
-        await init_db()
-        logger.info("✅ Database initialized successfully")
+        # Initialize database with per-service initialization
+        db_success = await init_delivery_database()
+        if db_success:
+            logger.info("✅ Database initialization completed")
+        else:
+            logger.error("❌ Database initialization failed")
+            # Don't exit - let the service start but log the error
 
         # Start event service (graceful startup)
         try:

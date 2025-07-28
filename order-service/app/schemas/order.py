@@ -156,7 +156,7 @@ class DirectOrderCreate(BaseModel):
     special_instructions: Optional[str] = None
     requested_delivery_time: Optional[datetime] = None
     max_distance_km: float = Field(50.0, gt=0)
-    vendor_selection_criteria: str = Field("best_price", regex="^(best_price|fastest_delivery|closest_distance|highest_rating)$")
+    vendor_selection_criteria: str = Field("best_price", pattern="^(best_price|fastest_delivery|closest_distance|highest_rating)$")
 
 
 class VendorSelectionResult(BaseModel):

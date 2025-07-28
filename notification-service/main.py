@@ -20,6 +20,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from app.core.config import get_settings
 from app.core.database import get_db
+from app.core.db_init import init_notification_database
 from app.models.notification import Notification, NotificationTemplate, NotificationPreference, NotificationType
 from app.schemas.notification import (
     NotificationCreate, NotificationResponse, NotificationUpdate,
@@ -62,6 +63,15 @@ async def lifespan(app: FastAPI):
     logger.info("🚀 Starting Notification Service...")
 
     try:
+        # Initialize database
+        logger.info("🔧 Initializing database...")
+        db_success = await init_notification_database()
+        if db_success:
+            logger.info("✅ Database initialization completed")
+        else:
+            logger.error("❌ Database initialization failed")
+            # Don't exit - let the service start but log the error
+
         # Start event service (graceful startup)
         try:
             await event_service.connect()
