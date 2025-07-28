@@ -90,6 +90,10 @@ services:
       - NOTIFICATION_SERVICE_URL=http://notification-service:8010
       - ADMIN_SERVICE_URL=http://admin-service:8011
       - WEBSOCKET_SERVICE_URL=http://websocket-service:8012
+      - JWT_SECRET_KEY=oxygen_platform_jwt_secret_key_2024_production_ready
+      - ENCRYPTION_KEY=hARKbgFcvqYfy4kiAH361aJtgkCG2jZSK--AS7eHNhk=
+      - ENVIRONMENT=development
+      - REDIS_URL=redis://redis:6379
     depends_on:
       - user-service
       - location-service
@@ -114,6 +118,10 @@ services:
     environment:
       - DATABASE_URL=postgresql+asyncpg://user:password@postgres:5432/oxygen_platform
       - REDIS_URL=redis://redis:6379/0
+      - JWT_SECRET_KEY=oxygen_platform_jwt_secret_key_2024_production_ready
+      - MASTER_ENCRYPTION_KEY=82rdUzSkgoVNxN9Jx3igzLNZItbl_Ss9LpRVTeSKZt4=
+      - ENCRYPTION_KEY=hARKbgFcvqYfy4kiAH361aJtgkCG2jZSK--AS7eHNhk=
+      - SECRET_KEY=oxygen_platform_secret_key_2024_production_ready
     depends_on:
       postgres:
         condition: service_healthy
@@ -285,10 +293,27 @@ services:
       - "8006:8006"
     environment:
       - DATABASE_URL=postgresql+asyncpg://user:password@postgres:5432/oxygen_platform
+      - REDIS_URL=redis://redis:6379/0
+      - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672/
       - SECRET_KEY=your-secret-key-here-change-in-production
+      - JWT_SECRET_KEY=oxygen_platform_jwt_secret_key_2024_production_ready
+      - ENCRYPTION_KEY=hARKbgFcvqYfy4kiAH361aJtgkCG2jZSK--AS7eHNhk=
+      - USER_SERVICE_URL=http://user-service:8001
+      - INVENTORY_SERVICE_URL=http://inventory-service:8004
+      - LOCATION_SERVICE_URL=http://location-service:8003
+      - ORDER_SERVICE_URL=http://order-service:8005
+      - NOTIFICATION_SERVICE_URL=http://notification-service:8010
+      - DEFAULT_SEARCH_RADIUS_KM=50.0
+      - MAX_SEARCH_RADIUS_KM=200.0
+      - PRICE_CACHE_TTL_SECONDS=300
+      - VENDOR_CACHE_TTL_SECONDS=1800
     depends_on:
       postgres:
         condition: service_healthy
+      redis:
+        condition: service_started
+      rabbitmq:
+        condition: service_started
     networks:
       - oxygen-network
 

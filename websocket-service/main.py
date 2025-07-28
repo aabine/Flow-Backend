@@ -22,6 +22,7 @@ from app.services.event_service import EventService
 from app.services.location_notification_service import LocationNotificationService
 from app.core.emergency_config import emergency_manager, EmergencyLevel
 from shared.models import UserRole, EventType
+from shared.exceptions import AuthException
 
 app = FastAPI(
     title="WebSocket Service",
@@ -46,15 +47,21 @@ location_notification_service = LocationNotificationService(websocket_manager)
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
 async def get_current_user(token: str = Depends(oauth2_scheme)):
-    credentials_exception = HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Could not validate credentials",
-        headers={"WWW-Authenticate": "Bearer"},
-    )
-    user = await auth_service.verify_token(token)
-    if user is None:
-        raise credentials_exception
-    return user
+    try:
+        credentials_exception = HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Could not validate credentials",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+        user = await auth_service.verify_token(token)
+        if user is None:
+            raise credentials_exception
+        return user
+    except AuthException as e:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=str(e)
+        )
 
 
 @app.get("/")
@@ -63,7 +70,7 @@ async def root():
     return {
         "service": "WebSocket Service",
         "version": "1.0.0",
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.now(datetime.timezone.utc).isoformat(),
         "active_connections": websocket_manager.get_connection_count()
     }
 
@@ -73,7 +80,7 @@ async def health_check():
     """Health check endpoint."""
     return {
         "status": "healthy",
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.now(datetime.timezone.utc).isoformat(),
         "active_connections": websocket_manager.get_connection_count()
     }
 
@@ -103,7 +110,7 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str, token: Optional
             await websocket_manager.send_personal_message(user_id, {
                 "type": "connection_established",
                 "message": "WebSocket connection established",
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": datetime.now(datetime.timezone.utc).isoformat(),
                 "user_id": user_id
             })
             
@@ -130,7 +137,7 @@ async def handle_websocket_message(user_id: str, message: dict):
     if message_type == "ping":
         await websocket_manager.send_personal_message(user_id, {
             "type": "pong",
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.now(datetime.timezone.utc).isoformat()
         })
     
     elif message_type == "subscribe":
@@ -141,7 +148,7 @@ async def handle_websocket_message(user_id: str, message: dict):
         await websocket_manager.send_personal_message(user_id, {
             "type": "subscription_confirmed",
             "events": event_types,
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.now(datetime.timezone.utc).isoformat()
         })
     
     elif message_type == "unsubscribe":
@@ -152,7 +159,7 @@ async def handle_websocket_message(user_id: str, message: dict):
         await websocket_manager.send_personal_message(user_id, {
             "type": "unsubscription_confirmed",
             "events": event_types,
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.now(datetime.timezone.utc).isoformat()
         })
     
     elif message_type == "location_update":
@@ -165,7 +172,7 @@ async def handle_websocket_message(user_id: str, message: dict):
             
             await websocket_manager.send_personal_message(user_id, {
                 "type": "location_updated",
-                "timestamp": datetime.utcnow().isoformat()
+                "timestamp": datetime.now(datetime.timezone.utc).isoformat()
             })
 
 
@@ -193,7 +200,7 @@ async def emergency_websocket(websocket: WebSocket, area_id: str, token: Optiona
             await websocket_manager.send_personal_message(user_id, {
                 "type": "emergency_channel_joined",
                 "area_id": area_id,
-                "timestamp": datetime.utcnow().isoformat()
+                "timestamp": datetime.now(datetime.timezone.utc).isoformat()
             })
             
             while True:
@@ -211,7 +218,7 @@ async def emergency_websocket(websocket: WebSocket, area_id: str, token: Optiona
                             "severity": message.get("severity", "high"),
                             "location": message.get("location"),
                             "sender_id": user_id,
-                            "timestamp": datetime.utcnow().isoformat()
+                            "timestamp": datetime.now(datetime.timezone.utc).isoformat()
                         })
                 
         except WebSocketDisconnect:

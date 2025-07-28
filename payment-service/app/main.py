@@ -21,6 +21,7 @@ from app.services.payment_service import PaymentService
 from app.services.paystack_service import PaystackService
 from app.services.event_service import EventService
 from shared.models import PaymentStatus, UserRole, APIResponse
+from shared.security.auth import get_current_user
 
 # Services will be initialized in the FastAPI lifespan
 payment_service: Optional[PaymentService] = None
@@ -54,17 +55,7 @@ app.add_middleware(
 )
 
 
-def get_current_user(
-    x_user_id: Optional[str] = Header(None),
-    x_user_role: Optional[str] = Header(None)
-) -> dict:
-    """Get current user from headers (set by API Gateway)."""
-    if not x_user_id or not x_user_role:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="User authentication required"
-        )
-    return {"user_id": x_user_id, "role": x_user_role}
+# Using shared authentication function from shared.security.auth
 
 
 @app.get("/")

@@ -11,10 +11,7 @@ from app.core.database import get_db
 from app.services.driver_service import DriverService
 from app.schemas.delivery import DriverCreate, DriverUpdate, DriverResponse
 from shared.models import APIResponse
-
-# Temporary auth dependency - replace with proper auth integration
-async def get_current_user():
-    return {"user_id": "temp-user", "role": "customer"}
+from shared.security.auth import get_current_user
 
 router = APIRouter()
 driver_service = DriverService()

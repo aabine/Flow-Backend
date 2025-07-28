@@ -119,6 +119,7 @@ class VendorInventoryResponse(BaseModel):
 class InventorySearchResult(BaseModel):
     inventory_id: str
     vendor_id: str
+    vendor_name: str
     location_name: str
     address: str
     city: str
@@ -127,7 +128,14 @@ class InventorySearchResult(BaseModel):
     longitude: float
     distance_km: float
     available_quantity: int
+    unit_price: Optional[float] = None
+    delivery_fee: Optional[float] = None
+    emergency_surcharge: Optional[float] = None
+    minimum_order_quantity: Optional[int] = 1
+    maximum_order_quantity: Optional[int] = None
+    estimated_delivery_time_hours: Optional[int] = None
     vendor_rating: Optional[float] = None
+    is_available: bool = True
 
     class Config:
         from_attributes = True
@@ -224,3 +232,83 @@ class PaginatedStockMovementResponse(BaseModel):
     page: int
     size: int
     pages: int
+
+
+# Product Catalog Integration Schemas
+class ProductCatalogRequest(BaseModel):
+    hospital_latitude: float = Field(..., ge=-90, le=90)
+    hospital_longitude: float = Field(..., ge=-180, le=180)
+    cylinder_size: Optional[CylinderSize] = None
+    quantity: int = Field(1, gt=0)
+    max_distance_km: float = Field(50.0, gt=0)
+    is_emergency: bool = False
+    sort_by: str = Field("distance", regex="^(distance|price|rating|delivery_time)$")
+    sort_order: str = Field("asc", regex="^(asc|desc)$")
+
+
+class ProductCatalogItem(BaseModel):
+    vendor_id: str
+    vendor_name: str
+    location_id: str
+    location_name: str
+    address: str
+    city: str
+    state: str
+    latitude: float
+    longitude: float
+    distance_km: float
+    cylinder_size: CylinderSize
+    available_quantity: int
+    unit_price: float
+    delivery_fee: float
+    emergency_surcharge: float
+    minimum_order_quantity: int
+    maximum_order_quantity: Optional[int]
+    estimated_delivery_time_hours: int
+    vendor_rating: Optional[float] = None
+    is_available: bool = True
+
+    class Config:
+        from_attributes = True
+
+
+class ProductCatalogResponse(BaseModel):
+    items: List[ProductCatalogItem]
+    total: int
+    search_radius_km: float
+    hospital_location: dict
+    filters_applied: ProductCatalogRequest
+
+
+# Real-time Availability Schemas
+class AvailabilityCheck(BaseModel):
+    vendor_id: str
+    location_id: str
+    cylinder_size: CylinderSize
+    quantity: int = Field(..., gt=0)
+
+
+class AvailabilityResponse(BaseModel):
+    vendor_id: str
+    location_id: str
+    cylinder_size: CylinderSize
+    available_quantity: int
+    is_available: bool
+    unit_price: Optional[float] = None
+    delivery_fee: Optional[float] = None
+    estimated_delivery_time_hours: Optional[int] = None
+    last_updated: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class BulkAvailabilityCheck(BaseModel):
+    checks: List[AvailabilityCheck]
+
+
+class BulkAvailabilityResponse(BaseModel):
+    results: List[AvailabilityResponse]
+    total_checked: int
+    available_count: int
+    unavailable_count: int

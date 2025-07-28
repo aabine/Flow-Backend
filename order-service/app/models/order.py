@@ -1,5 +1,5 @@
 from sqlalchemy import Column, String, Boolean, DateTime, Text, Enum, Integer, Float, ForeignKey
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import UUID, ENUM
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 import uuid
@@ -20,7 +20,7 @@ class Order(Base):
     reference = Column(String, unique=True, index=True, nullable=False)
     hospital_id = Column(UUID(as_uuid=True), nullable=False, index=True)
     vendor_id = Column(UUID(as_uuid=True), nullable=True, index=True)
-    status = Column(Enum(OrderStatus), default=OrderStatus.PENDING, index=True)
+    status = Column(ENUM('pending', 'confirmed', 'processing', 'shipped', 'delivered', 'cancelled', name='orderstatus'), default='pending', index=True)
     is_emergency = Column(Boolean, default=False, index=True)
     
     # Delivery information
@@ -63,7 +63,7 @@ class OrderItem(Base):
     
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
     order_id = Column(UUID(as_uuid=True), ForeignKey("orders.id"), nullable=False)
-    cylinder_size = Column(Enum(CylinderSize), nullable=False)
+    cylinder_size = Column(String, nullable=False)
     quantity = Column(Integer, nullable=False)
     unit_price = Column(Float, nullable=True)
     total_price = Column(Float, nullable=True)
@@ -79,7 +79,7 @@ class OrderStatusHistory(Base):
     
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
     order_id = Column(UUID(as_uuid=True), ForeignKey("orders.id"), nullable=False)
-    status = Column(Enum(OrderStatus), nullable=False)
+    status = Column(ENUM('pending', 'confirmed', 'processing', 'shipped', 'delivered', 'cancelled', name='orderstatus'), nullable=False)
     notes = Column(Text, nullable=True)
     updated_by = Column(UUID(as_uuid=True), nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())

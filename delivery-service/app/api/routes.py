@@ -11,10 +11,7 @@ from app.core.database import get_db
 from app.services.route_service import RouteService
 from app.schemas.delivery import RouteCreate, RouteResponse
 from shared.models import APIResponse
-
-# Temporary auth dependency - replace with proper auth integration
-async def get_current_user():
-    return {"user_id": "temp-user", "role": "customer"}
+from shared.security.auth import get_current_user
 
 router = APIRouter()
 route_service = RouteService()

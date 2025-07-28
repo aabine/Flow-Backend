@@ -21,10 +21,12 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from app.core.config import get_settings
 from app.core.database import get_db
 from app.models.order import Order, OrderItem
-from app.schemas.order import OrderCreate, OrderResponse, OrderUpdate, OrderListResponse
+from app.schemas.order import (OrderCreate, OrderResponse, OrderUpdate, OrderListResponse,
+                              DirectOrderCreate, DirectOrderResponse, OrderPricingRequest, OrderPricingResponse)
 from app.services.order_service import OrderService
 from app.services.event_service import EventService
 from shared.models import OrderStatus, APIResponse, UserRole
+from shared.security.auth import get_current_user
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -78,17 +80,7 @@ order_service = OrderService()
 event_service = EventService()
 
 
-def get_current_user(
-    x_user_id: Optional[str] = Header(None),
-    x_user_role: Optional[str] = Header(None)
-) -> dict:
-    """Get current user from headers (set by API Gateway)."""
-    if not x_user_id or not x_user_role:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="User authentication required"
-        )
-    return {"user_id": x_user_id, "role": x_user_role}
+# Using shared authentication function from shared.security.auth
 
 
 @app.get("/")
@@ -152,11 +144,30 @@ async def create_order(
         order = await order_service.create_order(db, current_user["user_id"], order_data)
         
         # Emit order created event
-        await event_service.emit_order_created(order)
+        await event_service.emit_order_created(
+            str(order.id),
+            str(order.hospital_id),
+            str(order.vendor_id) if order.vendor_id else None,
+            {
+                "reference": order.reference,
+                "delivery_address": order.delivery_address,
+                "is_emergency": order.is_emergency,
+                "total_amount": order.total_amount
+            }
+        )
         
         # If emergency order, emit emergency event
         if order_data.is_emergency:
-            await event_service.emit_emergency_order(order)
+            await event_service.emit_emergency_order_created(
+                str(order.id),
+                str(order.hospital_id),
+                {
+                    "reference": order.reference,
+                    "delivery_address": order.delivery_address,
+                    "is_emergency": order.is_emergency,
+                    "total_amount": order.total_amount
+                }
+            )
         
         return APIResponse(
             success=True,
@@ -174,6 +185,55 @@ async def create_order(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to create order: {str(e)}"
+        )
+
+
+# Direct Ordering Endpoints
+@app.post("/orders/direct", response_model=DirectOrderResponse)
+async def create_direct_order(
+    order_data: DirectOrderCreate,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """Create a direct order with automatic vendor selection."""
+    try:
+        if current_user["role"] != UserRole.HOSPITAL:
+            raise HTTPException(status_code=403, detail="Only hospitals can create direct orders")
+
+        direct_order = await order_service.create_direct_order(
+            db, current_user["user_id"], order_data
+        )
+
+        return direct_order
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to create direct order: {str(e)}"
+        )
+
+
+@app.post("/orders/pricing", response_model=OrderPricingResponse)
+async def get_order_pricing(
+    pricing_request: OrderPricingRequest,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """Get pricing options for an order without creating it."""
+    try:
+        if current_user["role"] != UserRole.HOSPITAL:
+            raise HTTPException(status_code=403, detail="Only hospitals can request pricing")
+
+        pricing_response = await order_service.get_order_pricing(pricing_request)
+
+        return pricing_response
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get order pricing: {str(e)}"
         )
 
 
@@ -299,9 +359,13 @@ async def accept_order(
             )
         
         order = await order_service.accept_order(db, order_id, current_user["user_id"])
-        
+
         # Emit order accepted event
-        await event_service.emit_order_accepted(order)
+        await event_service.emit_order_accepted(
+            str(order.id),
+            str(order.hospital_id),
+            str(order.vendor_id)
+        )
         
         return APIResponse(
             success=True,

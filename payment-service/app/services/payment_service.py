@@ -20,19 +20,29 @@ class PaymentService:
 
     async def create_payment(self, payment_data: PaymentCreate, user_id: str, vendor_id: str, platform_fee_percentage: float) -> Payment:
         """Create a new payment record."""
+        import secrets
+        import time
+
         platform_fee = payment_data.amount * (platform_fee_percentage / 100)
         vendor_amount = payment_data.amount - platform_fee
-        
+
+        # Generate unique payment reference
+        timestamp = str(int(time.time()))
+        random_part = secrets.token_urlsafe(8)
+        reference = f"OXY_{timestamp}_{random_part}_{payment_data.order_id[:8]}"
+
         payment = Payment(
-            id=str(uuid.uuid4()),
+            id=uuid.uuid4(),
             order_id=payment_data.order_id,
-            user_id=user_id,
-            vendor_id=vendor_id,
+            user_id=uuid.UUID(user_id),
+            vendor_id=uuid.UUID(vendor_id) if vendor_id != "vendor_id_placeholder" else uuid.uuid4(),
+            reference=reference,
             amount=payment_data.amount,
             platform_fee=platform_fee,
             vendor_amount=vendor_amount,
             currency=payment_data.currency,
-            status=PaymentStatus.PENDING
+            status=PaymentStatus.PENDING,
+            payment_method="card"
         )
         
         self.db.add(payment)
@@ -46,22 +56,25 @@ class PaymentService:
 
     async def _create_payment_splits(self, payment: Payment):
         """Create payment splits for vendor and platform."""
+        # Generate a platform UUID (could be a fixed UUID for the platform)
+        platform_uuid = uuid.UUID("00000000-0000-0000-0000-000000000001")  # Fixed platform UUID
+
         # Vendor split
         vendor_split = PaymentSplit(
-            id=str(uuid.uuid4()),
+            id=uuid.uuid4(),
             payment_id=payment.id,
             recipient_type="vendor",
             recipient_id=payment.vendor_id,
             amount=payment.vendor_amount,
             percentage=((payment.vendor_amount / payment.amount) * 100)
         )
-        
+
         # Platform split
         platform_split = PaymentSplit(
-            id=str(uuid.uuid4()),
+            id=uuid.uuid4(),
             payment_id=payment.id,
             recipient_type="platform",
-            recipient_id="platform",
+            recipient_id=platform_uuid,
             amount=payment.platform_fee,
             percentage=((payment.platform_fee / payment.amount) * 100)
         )

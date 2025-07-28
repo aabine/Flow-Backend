@@ -16,25 +16,13 @@ from app.core.database import get_db
 from app.services.analytics_service import AnalyticsService
 from app.schemas.admin import ExportRequest, ExportResponse
 from shared.models import APIResponse, UserRole
+from shared.security.auth import get_current_admin_user
 
 router = APIRouter()
 analytics_service = AnalyticsService()
 
 
-async def get_current_admin_user(
-    x_user_id: str = Header(..., alias="X-User-ID"),
-    x_user_role: str = Header(..., alias="X-User-Role")
-) -> dict:
-    """Get current admin user from headers (set by API Gateway)."""
-    if UserRole(x_user_role) != UserRole.ADMIN:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Admin access required"
-        )
-    return {
-        "user_id": x_user_id,
-        "role": UserRole(x_user_role)
-    }
+# Using shared authentication function from shared.security.auth
 
 
 @router.get("/financial-summary")
@@ -60,7 +48,7 @@ async def get_financial_summary(
             "estimated_transactions": int(total_transactions),
             "revenue_trends": revenue_analytics.revenue_by_period,
             "top_revenue_vendors": revenue_analytics.top_revenue_vendors,
-            "generated_at": datetime.utcnow().isoformat()
+            "generated_at": datetime.now(datetime.timezone.utc).isoformat()
         }
         
         return financial_summary
@@ -88,7 +76,7 @@ async def get_geographic_analytics(
                 key=lambda x: x.get("user_count", 0), 
                 reverse=True
             )[:10],
-            "generated_at": datetime.utcnow().isoformat()
+            "generated_at": datetime.now(datetime.timezone.utc).isoformat()
         }
         
         return geographic_data
@@ -114,7 +102,7 @@ async def get_performance_metrics(
             "uptime_percentage": system_analytics.uptime_percentage,
             "average_response_time": sum(system_analytics.response_times.values()) / len(system_analytics.response_times) if system_analytics.response_times else 0,
             "services_down": sum(1 for status in system_analytics.service_health.values() if status == "down"),
-            "generated_at": datetime.utcnow().isoformat()
+            "generated_at": datetime.now(datetime.timezone.utc).isoformat()
         }
         
         return performance_metrics
@@ -156,10 +144,10 @@ async def get_business_insights(
                 "users": user_analytics.user_growth_trend,
                 "reviews": review_analytics.review_trends
             },
-            "recommendations": self._generate_business_recommendations(
+            "recommendations": _generate_business_recommendations(
                 order_analytics, revenue_analytics, user_analytics, review_analytics
             ),
-            "generated_at": datetime.utcnow().isoformat()
+            "generated_at": datetime.now(datetime.timezone.utc).isoformat()
         }
         
         return insights
@@ -263,7 +251,7 @@ async def get_monthly_report(
                 "users": user_analytics.dict(),
                 "reviews": review_analytics.dict()
             },
-            "generated_at": datetime.utcnow().isoformat(),
+            "generated_at": datetime.now(datetime.timezone.utc).isoformat(),
             "generated_by": current_admin["user_id"]
         }
         
@@ -312,7 +300,7 @@ async def get_trend_comparison(
         return {
             "metric": metric,
             "comparison": comparison_data,
-            "generated_at": datetime.utcnow().isoformat()
+            "generated_at": datetime.now(datetime.timezone.utc).isoformat()
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail="Failed to generate trend comparison")

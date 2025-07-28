@@ -22,6 +22,7 @@ from app.core.config import get_settings
 from app.core.database import get_db
 from app.api.inventory import router as inventory_router
 from app.api.stock_movements import router as stock_movements_router
+from app.api.product_catalog import router as product_catalog_router
 from app.services.event_service import event_service
 from shared.models import APIResponse
 
@@ -102,6 +103,7 @@ async def inventory_info():
 # Include API routers
 app.include_router(inventory_router, prefix="/inventory", tags=["inventory"])
 app.include_router(stock_movements_router, prefix="/stock-movements", tags=["stock-movements"])
+app.include_router(product_catalog_router, prefix="/catalog", tags=["product-catalog"])
 
 
 @app.get("/health")

@@ -17,20 +17,13 @@ from app.schemas.review import (
     ReviewModerationAction, ReviewStatsResponse
 )
 from shared.models import APIResponse, UserRole
+from shared.security.auth import get_current_user
 
 router = APIRouter()
 review_service = ReviewService()
 
 
-async def get_current_user(
-    x_user_id: str = Header(..., alias="X-User-ID"),
-    x_user_role: str = Header(..., alias="X-User-Role")
-) -> dict:
-    """Get current user from headers (set by API Gateway)."""
-    return {
-        "user_id": x_user_id,
-        "role": UserRole(x_user_role)
-    }
+# Using shared authentication function from shared.security.auth
 
 
 async def _get_reviews_impl(

@@ -15,7 +15,15 @@ class Settings(BaseSettings):
     
     # Redis
     REDIS_URL: str = os.getenv("REDIS_URL", "redis://localhost:6379/0")
-    
+
+    # Security Configuration
+    ENCRYPTION_KEY: str = os.getenv("ENCRYPTION_KEY", "")
+    MFA_ISSUER: str = os.getenv("MFA_ISSUER", "Oxygen Supply Platform")
+
+    # Database Security
+    DB_SSL_MODE: str = os.getenv("DB_SSL_MODE", "prefer")
+    DB_AUDIT_LOGGING: bool = os.getenv("DB_AUDIT_LOGGING", "false").lower() == "true"
+
     # Environment
     ENVIRONMENT: str = os.getenv("ENVIRONMENT", "development")
     DEBUG: bool = os.getenv("DEBUG", "true").lower() == "true"

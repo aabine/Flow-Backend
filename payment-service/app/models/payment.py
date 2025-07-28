@@ -1,4 +1,5 @@
 from sqlalchemy import Column, String, Integer, Float, DateTime, Boolean, Text, ForeignKey, Enum
+from sqlalchemy.dialects.postgresql import UUID, ENUM
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from datetime import datetime
@@ -16,19 +17,20 @@ from shared.models import PaymentStatus
 class Payment(Base):
     __tablename__ = "payments"
     
-    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     order_id = Column(String, nullable=False, index=True)
-    user_id = Column(String, nullable=False, index=True)
-    vendor_id = Column(String, nullable=False, index=True)
+    user_id = Column(UUID(as_uuid=True), nullable=False, index=True)
+    vendor_id = Column(UUID(as_uuid=True), nullable=False, index=True)
+    reference = Column(String, nullable=False, unique=True, index=True)
     amount = Column(Float, nullable=False)
     platform_fee = Column(Float, nullable=False, default=0.0)
     vendor_amount = Column(Float, nullable=False)
     currency = Column(String, nullable=False, default="NGN")
-    status = Column(Enum(PaymentStatus), nullable=False, default=PaymentStatus.PENDING)
+    status = Column(ENUM('pending', 'processing', 'completed', 'failed', 'refunded', name='paymentstatus'), nullable=False, default='pending')
     paystack_reference = Column(String, nullable=True, unique=True)
     paystack_access_code = Column(String, nullable=True)
     authorization_url = Column(Text, nullable=True)
-    payment_method = Column(String, nullable=True)
+    payment_method = Column(String, nullable=False, default="card")
     paid_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
@@ -40,11 +42,11 @@ class Payment(Base):
 
 class PaymentSplit(Base):
     __tablename__ = "payment_splits"
-    
-    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
-    payment_id = Column(String, ForeignKey("payments.id"), nullable=False)
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    payment_id = Column(UUID(as_uuid=True), ForeignKey("payments.id"), nullable=False)
     recipient_type = Column(String, nullable=False)  # "vendor" or "platform"
-    recipient_id = Column(String, nullable=False)
+    recipient_id = Column(UUID(as_uuid=True), nullable=False)
     amount = Column(Float, nullable=False)
     percentage = Column(Float, nullable=False)
     status = Column(String, nullable=False, default="pending")
@@ -58,9 +60,9 @@ class PaymentSplit(Base):
 
 class PaymentWebhook(Base):
     __tablename__ = "payment_webhooks"
-    
-    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
-    payment_id = Column(String, ForeignKey("payments.id"), nullable=True)
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    payment_id = Column(UUID(as_uuid=True), ForeignKey("payments.id"), nullable=True)
     event_type = Column(String, nullable=False)
     paystack_reference = Column(String, nullable=False)
     webhook_data = Column(Text, nullable=False)  # JSON data from webhook

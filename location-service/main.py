@@ -21,6 +21,7 @@ from app.schemas.location import (
 from app.services.location_service import LocationService
 from app.services.emergency_service import EmergencyService
 from shared.models import UserRole, APIResponse
+from shared.security.auth import get_current_user
 
 app = FastAPI(
     title="Location Service",
@@ -40,17 +41,7 @@ location_service = LocationService()
 emergency_service = EmergencyService()
 
 
-def get_current_user(
-    x_user_id: Optional[str] = Header(None),
-    x_user_role: Optional[str] = Header(None)
-) -> dict:
-    """Get current user from headers (set by API Gateway)."""
-    if not x_user_id or not x_user_role:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="User authentication required"
-        )
-    return {"user_id": x_user_id, "role": x_user_role}
+# Using shared authentication function from shared.security.auth
 
 
 @app.get("/")

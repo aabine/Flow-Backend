@@ -254,25 +254,29 @@ class NotificationCreate(BaseModel):
     metadata: Optional[dict] = None
 
 
-# Quote Models
-class QuoteRequest(BaseModel):
-    hospital_id: str
+# Product Catalog Models
+class ProductInfo(BaseModel):
     cylinder_size: CylinderSize
-    quantity: int = Field(..., gt=0)
-    delivery_address: str
-    delivery_latitude: float = Field(..., ge=-90, le=90)
-    delivery_longitude: float = Field(..., ge=-180, le=180)
-    is_emergency: bool = False
-    max_distance_km: float = 50.0
-
-
-class QuoteResponse(BaseModel):
-    id: str
+    unit_price: float
+    available_quantity: int
     vendor_id: str
     vendor_name: str
-    price_per_unit: float
-    total_price: float
-    estimated_delivery_time: int  # minutes
+    location_id: str
     distance_km: float
-    vendor_rating: float
-    expires_at: datetime
+    estimated_delivery_time: int  # minutes
+    vendor_rating: Optional[float] = None
+
+
+class ProductCatalogItem(BaseModel):
+    vendor_id: str
+    vendor_name: str
+    location_name: str
+    address: str
+    city: str
+    state: str
+    latitude: float
+    longitude: float
+    distance_km: float
+    products: List[ProductInfo]
+    vendor_rating: Optional[float] = None
+    is_available: bool = True

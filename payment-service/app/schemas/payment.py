@@ -22,6 +22,7 @@ class PaymentResponse(BaseModel):
     order_id: str
     user_id: str
     vendor_id: str
+    reference: str
     amount: float
     platform_fee: float
     vendor_amount: float

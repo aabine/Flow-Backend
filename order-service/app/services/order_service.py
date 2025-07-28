@@ -12,9 +12,9 @@ import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))))
 
 from app.models.order import Order, OrderItem, OrderStatusHistory
-from app.schemas.order import OrderCreate, OrderUpdate
+from app.schemas.order import OrderCreate, OrderUpdate, DirectOrderCreate, VendorSelectionResult, DirectOrderResponse, OrderPricingRequest, OrderPricingResponse
 from app.core.config import get_settings
-from shared.models import OrderStatus, UserRole
+from shared.models import OrderStatus, UserRole, CylinderSize
 from shared.utils import generate_order_reference, calculate_distance_km, calculate_delivery_eta
 
 
@@ -64,7 +64,7 @@ class OrderService:
         # Create initial status history
         status_history = OrderStatusHistory(
             order_id=db_order.id,
-            status=OrderStatus.PENDING,
+            status="pending",
             notes="Order created",
             updated_by=uuid.UUID(hospital_id)
         )
@@ -148,11 +148,11 @@ class OrderService:
         stmt = update(Order).where(
             and_(
                 Order.id == uuid.UUID(order_id),
-                Order.status == OrderStatus.PENDING
+                Order.status == "pending"
             )
         ).values(
             vendor_id=uuid.UUID(vendor_id),
-            status=OrderStatus.CONFIRMED
+            status="confirmed"
         )
         
         result = await db.execute(stmt)
@@ -162,7 +162,7 @@ class OrderService:
         # Add status history
         status_history = OrderStatusHistory(
             order_id=uuid.UUID(order_id),
-            status=OrderStatus.CONFIRMED,
+            status="confirmed",
             notes="Order accepted by vendor",
             updated_by=uuid.UUID(vendor_id)
         )
@@ -177,10 +177,10 @@ class OrderService:
         stmt = update(Order).where(
             and_(
                 Order.id == uuid.UUID(order_id),
-                Order.status.in_([OrderStatus.PENDING, OrderStatus.CONFIRMED])
+                Order.status.in_(["pending", "confirmed"])
             )
         ).values(
-            status=OrderStatus.CANCELLED,
+            status="cancelled",
             cancellation_reason=reason
         )
         
@@ -229,7 +229,7 @@ class OrderService:
             return True
         
         # Only pending or confirmed orders can be cancelled
-        if order.status not in [OrderStatus.PENDING, OrderStatus.CONFIRMED]:
+        if order.status not in ["pending", "confirmed"]:
             return False
         
         # Hospital can cancel their own orders
@@ -238,7 +238,7 @@ class OrderService:
         
         # Vendor can cancel confirmed orders
         if user_role == UserRole.VENDOR and str(order.vendor_id) == user_id:
-            return order.status == OrderStatus.CONFIRMED
+            return order.status == "confirmed"
         
         return False
     
@@ -247,7 +247,7 @@ class OrderService:
         query = select(Order).options(selectinload(Order.items)).filter(
             and_(
                 Order.is_emergency == True,
-                Order.status.in_([OrderStatus.PENDING, OrderStatus.CONFIRMED])
+                Order.status.in_(["pending", "confirmed"])
             )
         )
         
@@ -271,7 +271,7 @@ class OrderService:
         
         # Calculate ETA if order is in transit
         eta_minutes = None
-        if order.status == OrderStatus.IN_TRANSIT and order.estimated_delivery_time:
+        if order.status == "shipped" and order.estimated_delivery_time:
             time_diff = order.estimated_delivery_time - datetime.utcnow()
             eta_minutes = max(0, int(time_diff.total_seconds() / 60))
         
@@ -308,3 +308,349 @@ class OrderService:
             pass
         
         return False
+
+    async def create_direct_order(self, db: AsyncSession, hospital_id: str, order_data: DirectOrderCreate) -> DirectOrderResponse:
+        """Create a direct order with automatic vendor selection."""
+        try:
+            # Find best vendor for this order
+            vendor_selection = await self._select_best_vendor(order_data)
+
+            if not vendor_selection:
+                raise ValueError("No suitable vendor found for this order")
+
+            # Calculate pricing
+            pricing_breakdown = await self._calculate_order_pricing(order_data, vendor_selection.vendor_id)
+
+            # Create the order
+            order_create = OrderCreate(
+                items=order_data.items,
+                delivery_address=order_data.delivery_address,
+                delivery_latitude=order_data.delivery_latitude,
+                delivery_longitude=order_data.delivery_longitude,
+                delivery_contact_name=order_data.delivery_contact_name,
+                delivery_contact_phone=order_data.delivery_contact_phone,
+                is_emergency=order_data.is_emergency,
+                notes=order_data.notes,
+                special_instructions=order_data.special_instructions,
+                requested_delivery_time=order_data.requested_delivery_time,
+                preferred_vendor_id=vendor_selection.vendor_id
+            )
+
+            order = await self.create_order(db, hospital_id, order_create)
+
+            # Update order with pricing information
+            order.vendor_id = uuid.UUID(vendor_selection.vendor_id)
+            order.subtotal = pricing_breakdown["subtotal"]
+            order.delivery_fee = pricing_breakdown["delivery_fee"]
+            order.emergency_surcharge = pricing_breakdown["emergency_surcharge"] if order_data.is_emergency else 0.0
+            order.total_amount = pricing_breakdown["total"]
+            order.estimated_delivery_time = datetime.utcnow() + timedelta(hours=vendor_selection.estimated_delivery_time_hours)
+
+            await db.commit()
+            await db.refresh(order)
+
+            # Reserve stock
+            await self._reserve_stock(order, vendor_selection.location_id)
+
+            return DirectOrderResponse(
+                order=order,
+                vendor_selection=vendor_selection,
+                pricing_breakdown=pricing_breakdown,
+                estimated_total=pricing_breakdown["total"]
+            )
+
+        except Exception as e:
+            await db.rollback()
+            raise Exception(f"Failed to create direct order: {str(e)}")
+
+    async def get_order_pricing(self, pricing_request: OrderPricingRequest) -> OrderPricingResponse:
+        """Get pricing options for an order without creating it."""
+        try:
+            # Get vendor options
+            vendor_options = await self._get_vendor_options(pricing_request)
+
+            if not vendor_options:
+                raise ValueError("No vendors available for this order")
+
+            # Select recommended vendor (best price by default)
+            recommended_vendor = min(vendor_options, key=lambda x: x.total_price)
+
+            # Calculate pricing breakdown for recommended vendor
+            pricing_breakdown = await self._calculate_order_pricing_from_request(pricing_request, recommended_vendor.vendor_id)
+
+            return OrderPricingResponse(
+                vendor_options=vendor_options,
+                recommended_vendor=recommended_vendor,
+                pricing_breakdown=pricing_breakdown
+            )
+
+        except Exception as e:
+            raise Exception(f"Failed to get order pricing: {str(e)}")
+
+    async def _select_best_vendor(self, order_data: DirectOrderCreate) -> Optional[VendorSelectionResult]:
+        """Select the best vendor based on criteria."""
+        try:
+            # Get available vendors from inventory service
+            async with httpx.AsyncClient() as client:
+                response = await client.get(
+                    f"{get_settings().INVENTORY_SERVICE_URL}/catalog/nearby",
+                    params={
+                        "latitude": order_data.delivery_latitude,
+                        "longitude": order_data.delivery_longitude,
+                        "max_distance_km": order_data.max_distance_km,
+                        "is_emergency": order_data.is_emergency,
+                        "sort_by": self._get_sort_criteria(order_data.vendor_selection_criteria)
+                    }
+                )
+
+                if response.status_code != 200:
+                    return None
+
+                catalog_data = response.json()
+                vendors = catalog_data.get("items", [])
+
+                if not vendors:
+                    return None
+
+                # Group by vendor and select best option
+                vendor_groups = {}
+                for item in vendors:
+                    vendor_id = item["vendor_id"]
+                    if vendor_id not in vendor_groups:
+                        vendor_groups[vendor_id] = []
+                    vendor_groups[vendor_id].append(item)
+
+                # Calculate total price for each vendor
+                vendor_options = []
+                for vendor_id, items in vendor_groups.items():
+                    total_price = 0
+                    can_fulfill = True
+
+                    # Check if vendor can fulfill all items
+                    for order_item in order_data.items:
+                        matching_items = [i for i in items if i["cylinder_size"] == order_item.cylinder_size.value]
+                        if not matching_items:
+                            can_fulfill = False
+                            break
+
+                        best_item = min(matching_items, key=lambda x: x["unit_price"])
+                        if best_item["available_quantity"] < order_item.quantity:
+                            can_fulfill = False
+                            break
+
+                        total_price += best_item["unit_price"] * order_item.quantity
+                        total_price += best_item["delivery_fee"]
+                        if order_data.is_emergency:
+                            total_price += best_item["emergency_surcharge"]
+
+                    if can_fulfill and items:
+                        first_item = items[0]  # Use first item for vendor info
+                        vendor_options.append(VendorSelectionResult(
+                            vendor_id=vendor_id,
+                            vendor_name=first_item["vendor_name"],
+                            location_id=first_item["location_id"],
+                            location_name=first_item["location_name"],
+                            distance_km=first_item["distance_km"],
+                            estimated_delivery_time_hours=first_item["estimated_delivery_time_hours"],
+                            total_price=total_price,
+                            selection_reason=f"Selected based on {order_data.vendor_selection_criteria}",
+                            vendor_rating=first_item.get("vendor_rating")
+                        ))
+
+                if not vendor_options:
+                    return None
+
+                # Select best vendor based on criteria
+                if order_data.vendor_selection_criteria == "best_price":
+                    return min(vendor_options, key=lambda x: x.total_price)
+                elif order_data.vendor_selection_criteria == "fastest_delivery":
+                    return min(vendor_options, key=lambda x: x.estimated_delivery_time_hours)
+                elif order_data.vendor_selection_criteria == "closest_distance":
+                    return min(vendor_options, key=lambda x: x.distance_km)
+                elif order_data.vendor_selection_criteria == "highest_rating":
+                    return max(vendor_options, key=lambda x: x.vendor_rating or 0)
+                else:
+                    return vendor_options[0]
+
+        except Exception as e:
+            raise Exception(f"Failed to select vendor: {str(e)}")
+
+    def _get_sort_criteria(self, selection_criteria: str) -> str:
+        """Convert selection criteria to sort criteria."""
+        mapping = {
+            "best_price": "price",
+            "fastest_delivery": "delivery_time",
+            "closest_distance": "distance",
+            "highest_rating": "rating"
+        }
+        return mapping.get(selection_criteria, "distance")
+
+    async def _calculate_order_pricing(self, order_data: DirectOrderCreate, vendor_id: str) -> dict:
+        """Calculate pricing for an order with a specific vendor."""
+        try:
+            # Get pricing from pricing service
+            async with httpx.AsyncClient() as client:
+                response = await client.get(
+                    f"{get_settings().PRICING_SERVICE_URL}/products",
+                    params={"vendor_id": vendor_id}
+                )
+
+                if response.status_code != 200:
+                    raise Exception("Failed to get pricing information")
+
+                pricing_data = response.json()
+                pricing_items = pricing_data.get("items", [])
+
+                subtotal = 0.0
+                delivery_fee = 0.0
+                emergency_surcharge = 0.0
+
+                for order_item in order_data.items:
+                    # Find pricing for this cylinder size
+                    pricing_item = next(
+                        (p for p in pricing_items if p["cylinder_size"] == order_item.cylinder_size.value),
+                        None
+                    )
+
+                    if not pricing_item:
+                        raise Exception(f"No pricing found for {order_item.cylinder_size.value}")
+
+                    item_price = float(pricing_item["unit_price"]) * order_item.quantity
+                    subtotal += item_price
+                    delivery_fee = max(delivery_fee, float(pricing_item["delivery_fee"]))
+
+                    if order_data.is_emergency:
+                        emergency_surcharge += float(pricing_item["emergency_surcharge"])
+
+                total = subtotal + delivery_fee + emergency_surcharge
+
+                return {
+                    "subtotal": subtotal,
+                    "delivery_fee": delivery_fee,
+                    "emergency_surcharge": emergency_surcharge,
+                    "total": total,
+                    "breakdown": {
+                        "items": [
+                            {
+                                "cylinder_size": item.cylinder_size.value,
+                                "quantity": item.quantity,
+                                "unit_price": next(
+                                    (float(p["unit_price"]) for p in pricing_items if p["cylinder_size"] == item.cylinder_size.value),
+                                    0.0
+                                ),
+                                "total_price": next(
+                                    (float(p["unit_price"]) * item.quantity for p in pricing_items if p["cylinder_size"] == item.cylinder_size.value),
+                                    0.0
+                                )
+                            }
+                            for item in order_data.items
+                        ]
+                    }
+                }
+
+        except Exception as e:
+            raise Exception(f"Failed to calculate pricing: {str(e)}")
+
+    async def _calculate_order_pricing_from_request(self, pricing_request: OrderPricingRequest, vendor_id: str) -> dict:
+        """Calculate pricing from a pricing request."""
+        # Convert pricing request to order data format for reuse
+        order_data = DirectOrderCreate(
+            items=pricing_request.items,
+            delivery_address="",  # Not needed for pricing
+            delivery_latitude=pricing_request.delivery_latitude,
+            delivery_longitude=pricing_request.delivery_longitude,
+            is_emergency=pricing_request.is_emergency,
+            max_distance_km=pricing_request.max_distance_km
+        )
+
+        return await self._calculate_order_pricing(order_data, vendor_id)
+
+    async def _reserve_stock(self, order: Order, location_id: str):
+        """Reserve stock for the order."""
+        try:
+            async with httpx.AsyncClient() as client:
+                for item in order.items:
+                    response = await client.post(
+                        f"{get_settings().INVENTORY_SERVICE_URL}/inventory/{location_id}/reserve",
+                        json={
+                            "cylinder_size": item.cylinder_size,
+                            "quantity": item.quantity,
+                            "order_id": str(order.id)
+                        }
+                    )
+
+                    if response.status_code != 200:
+                        # If reservation fails, we should handle this gracefully
+                        # For now, we'll log it but not fail the order
+                        pass
+
+        except Exception as e:
+            # Log the error but don't fail the order
+            pass
+
+    async def _get_vendor_options(self, pricing_request: OrderPricingRequest) -> List[VendorSelectionResult]:
+        """Get all available vendor options for a pricing request."""
+        try:
+            # Convert to direct order format for reuse
+            order_data = DirectOrderCreate(
+                items=pricing_request.items,
+                delivery_address="",
+                delivery_latitude=pricing_request.delivery_latitude,
+                delivery_longitude=pricing_request.delivery_longitude,
+                is_emergency=pricing_request.is_emergency,
+                max_distance_km=pricing_request.max_distance_km,
+                vendor_selection_criteria="best_price"
+            )
+
+            # Get all available vendors
+            async with httpx.AsyncClient() as client:
+                response = await client.get(
+                    f"{get_settings().INVENTORY_SERVICE_URL}/catalog/nearby",
+                    params={
+                        "latitude": pricing_request.delivery_latitude,
+                        "longitude": pricing_request.delivery_longitude,
+                        "max_distance_km": pricing_request.max_distance_km,
+                        "is_emergency": pricing_request.is_emergency
+                    }
+                )
+
+                if response.status_code != 200:
+                    return []
+
+                catalog_data = response.json()
+                vendors = catalog_data.get("items", [])
+
+                # Group by vendor and calculate pricing
+                vendor_groups = {}
+                for item in vendors:
+                    vendor_id = item["vendor_id"]
+                    if vendor_id not in vendor_groups:
+                        vendor_groups[vendor_id] = []
+                    vendor_groups[vendor_id].append(item)
+
+                vendor_options = []
+                for vendor_id, items in vendor_groups.items():
+                    try:
+                        pricing = await self._calculate_order_pricing(order_data, vendor_id)
+
+                        if items:
+                            first_item = items[0]
+                            vendor_options.append(VendorSelectionResult(
+                                vendor_id=vendor_id,
+                                vendor_name=first_item["vendor_name"],
+                                location_id=first_item["location_id"],
+                                location_name=first_item["location_name"],
+                                distance_km=first_item["distance_km"],
+                                estimated_delivery_time_hours=first_item["estimated_delivery_time_hours"],
+                                total_price=pricing["total"],
+                                selection_reason="Available vendor option",
+                                vendor_rating=first_item.get("vendor_rating")
+                            ))
+                    except Exception:
+                        # Skip vendors with pricing issues
+                        continue
+
+                return vendor_options
+
+        except Exception as e:
+            raise Exception(f"Failed to get vendor options: {str(e)}")

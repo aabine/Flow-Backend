@@ -21,12 +21,117 @@ import os
 
 logger = logging.getLogger(__name__)
 
+# FastAPI dependencies for authentication
+try:
+    from fastapi import Header, HTTPException, status
+    from typing import Optional
+
+    async def get_current_user(
+        x_user_id: str = Header(..., alias="X-User-ID"),
+        x_user_role: str = Header(..., alias="X-User-Role")
+    ) -> dict:
+        """
+        Standard authentication dependency for FastAPI endpoints.
+        Extracts user information from headers set by the API Gateway.
+
+        Args:
+            x_user_id: User ID from X-User-ID header
+            x_user_role: User role from X-User-Role header
+
+        Returns:
+            dict: User information with user_id and role
+
+        Raises:
+            HTTPException: If authentication headers are missing or invalid
+        """
+        from shared.models import UserRole
+
+        try:
+            return {
+                "user_id": x_user_id,
+                "role": UserRole(x_user_role)
+            }
+        except ValueError as e:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid user role: {x_user_role}"
+            )
+
+    async def get_current_user_optional(
+        x_user_id: Optional[str] = Header(None, alias="X-User-ID"),
+        x_user_role: Optional[str] = Header(None, alias="X-User-Role")
+    ) -> Optional[dict]:
+        """
+        Optional authentication dependency for FastAPI endpoints.
+        Returns None if no authentication headers are present.
+
+        Args:
+            x_user_id: Optional user ID from X-User-ID header
+            x_user_role: Optional user role from X-User-Role header
+
+        Returns:
+            dict or None: User information with user_id and role, or None if not authenticated
+        """
+        if not x_user_id or not x_user_role:
+            return None
+
+        from shared.models import UserRole
+
+        try:
+            return {
+                "user_id": x_user_id,
+                "role": UserRole(x_user_role)
+            }
+        except ValueError:
+            return None
+
+    async def get_current_admin_user(
+        x_user_id: str = Header(..., alias="X-User-ID"),
+        x_user_role: str = Header(..., alias="X-User-Role")
+    ) -> dict:
+        """
+        Admin-only authentication dependency for FastAPI endpoints.
+
+        Args:
+            x_user_id: User ID from X-User-ID header
+            x_user_role: User role from X-User-Role header
+
+        Returns:
+            dict: User information with user_id and role
+
+        Raises:
+            HTTPException: If user is not an admin or headers are invalid
+        """
+        from shared.models import UserRole
+
+        try:
+            user_role = UserRole(x_user_role)
+            if user_role != UserRole.ADMIN:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Admin access required"
+                )
+
+            return {
+                "user_id": x_user_id,
+                "role": user_role
+            }
+        except ValueError as e:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid user role: {x_user_role}"
+            )
+
+except ImportError:
+    # FastAPI not available, skip dependency definitions
+    pass
+
 
 class SecurityConfig:
     """Security configuration constants."""
     
     # JWT Configuration
-    JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", secrets.token_urlsafe(32))
+    JWT_SECRET_KEY = os.getenv("SECRET_KEY", secrets.token_urlsafe(32))
     JWT_ALGORITHM = "HS256"
     JWT_ACCESS_TOKEN_EXPIRE_MINUTES = 30
     JWT_REFRESH_TOKEN_EXPIRE_DAYS = 7
@@ -84,7 +189,7 @@ class JWTManager:
     ) -> str:
         """Create a secure access token."""
         
-        now = datetime.utcnow()
+        now = datetime.now(datetime.timezone.utc)
         expire = now + timedelta(minutes=SecurityConfig.JWT_ACCESS_TOKEN_EXPIRE_MINUTES)
         
         payload = {
@@ -107,7 +212,7 @@ class JWTManager:
     def create_refresh_token(self, user_id: str, access_token_jti: str) -> str:
         """Create a refresh token linked to an access token."""
         
-        now = datetime.utcnow()
+        now = datetime.now(datetime.timezone.utc)
         expire = now + timedelta(days=SecurityConfig.JWT_REFRESH_TOKEN_EXPIRE_DAYS)
         
         payload = {
@@ -126,7 +231,7 @@ class JWTManager:
     def create_mfa_token(self, user_id: str, mfa_method: str) -> str:
         """Create a temporary MFA token."""
         
-        now = datetime.utcnow()
+        now = datetime.now(datetime.timezone.utc)
         expire = now + timedelta(minutes=5)  # Short-lived MFA token
         
         payload = {
@@ -159,7 +264,7 @@ class JWTManager:
                 raise jwt.InvalidTokenError(f"Invalid token type. Expected {expected_type.value}")
             
             # Check if token is expired
-            if datetime.utcnow() > datetime.fromtimestamp(payload["exp"]):
+            if datetime.now(datetime.timezone.utc) > datetime.fromtimestamp(payload["exp"], datetime.timezone.utc):
                 raise jwt.ExpiredSignatureError("Token has expired")
             
             return payload
@@ -309,11 +414,31 @@ class SecurityValidator:
         return any(re.match(pattern, digits_only) for pattern in patterns)
     
     @staticmethod
-    def validate_sql_injection(query_string: str) -> bool:
+    def validate_sql_injection(query_string: str, allow_select: bool = False) -> bool:
         """Check for potential SQL injection patterns."""
         
         dangerous_patterns = [
-            r'(\b(SELECT|INSERT|UPDATE|DELETE|DROP|CREATE|ALTER|EXEC|UNION)\b)',
+            r'(\b(SELECT|INSERT|UPDATE|DELETE|DROP|CREATE|ALTER|EXEC|UNION)\b)' if allow_select else r'(\bSELECT\b)',
+            r'(--|#|/\*|\*/)',
+            r'(\bOR\b.*=.*\bOR\b)',
+            r'(\bAND\b.*=.*\bAND\b)',
+            r'(\'.*\'|".*")',
+            r'(\bxp_|\bsp_)',
+            r'(\bSCRIPT\b|\bJAVASCRIPT\b)'
+        ]
+        
+        for pattern in dangerous_patterns:
+            if re.search(pattern, query_string, re.IGNORECASE):
+                return False
+        
+        return True
+    
+    @staticmethod
+    def validate_no_sql_injection(query_string: str) -> bool:
+        """Check for potential NoSQL injection patterns."""
+        
+        dangerous_patterns = [
+            r'(\bSELECT\b|\bINSERT\b|\bUPDATE\b|\bDELETE\b|\bDROP\b|\bCREATE\b|\bALTER\b|\bEXEC\b|\bUNION\b)',
             r'(--|#|/\*|\*/)',
             r'(\bOR\b.*=.*\bOR\b)',
             r'(\bAND\b.*=.*\bAND\b)',

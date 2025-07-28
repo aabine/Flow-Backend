@@ -190,7 +190,7 @@ ROLE_PERMISSIONS = {
         "allowed_methods": ["*"]
     },
     UserRole.HOSPITAL: {
-        "allowed_services": ["user", "order", "pricing", "review", "notification", "inventory", "location"],
+        "allowed_services": ["user", "order", "pricing", "review", "notification", "inventory", "location", "payment"],
         "allowed_methods": ["GET", "POST", "PUT", "PATCH"],
         "restricted_endpoints": ["/admin/"]
     },
@@ -511,21 +511,21 @@ async def health_check():
 async def register(request: Request):
     """User registration."""
     response = await proxy_request("user", "/auth/register", request)
-    return response.json()
+    return response
 
 
 @app.post("/auth/login")
 async def login(request: Request):
     """User login."""
     response = await proxy_request("user", "/auth/login", request)
-    return response.json()
+    return response
 
 
 @app.post("/auth/refresh")
 async def refresh_token(request: Request):
     """Refresh access token."""
     response = await proxy_request("user", "/auth/refresh", request)
-    return response.json()
+    return response
 
 
 # Protected routes
@@ -533,70 +533,136 @@ async def refresh_token(request: Request):
 async def user_service(path: str, request: Request, user_data: dict = Depends(verify_token)):
     """Proxy to User Service."""
     response = await proxy_request("user", f"/{path}", request, user_data)
-    return response.json()
+    return response
 
 
 @app.api_route("/suppliers/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH"])
 async def supplier_service(path: str, request: Request, user_data: dict = Depends(verify_token)):
     """Proxy to Supplier Onboarding Service."""
     response = await proxy_request("supplier_onboarding", f"/{path}", request, user_data)
-    return response.json()
+    return response
+
+
+@app.api_route("/locations", methods=["GET", "POST", "PUT", "DELETE", "PATCH"])
+async def location_service_root(request: Request, user_data: dict = Depends(verify_token)):
+    """Proxy to Location Service root endpoint."""
+    response = await proxy_request("location", "/locations", request, user_data)
+    return response
 
 
 @app.api_route("/locations/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH"])
 async def location_service(path: str, request: Request, user_data: dict = Depends(verify_token)):
     """Proxy to Location Service."""
     response = await proxy_request("location", f"/{path}", request, user_data)
-    return response.json()
+    return response
 
 
 @app.api_route("/inventory/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH"])
 async def inventory_service(path: str, request: Request, user_data: dict = Depends(verify_token)):
     """Proxy to Inventory Service."""
     response = await proxy_request("inventory", f"/{path}", request, user_data)
-    return response.json()
+    return response
+
+
+@app.api_route("/orders", methods=["GET", "POST", "PUT", "DELETE", "PATCH"])
+async def order_service_root(request: Request, user_data: dict = Depends(verify_token)):
+    """Proxy to Order Service root endpoint."""
+    response = await proxy_request("order", "/orders", request, user_data)
+    return response
 
 
 @app.api_route("/orders/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH"])
 async def order_service(path: str, request: Request, user_data: dict = Depends(verify_token)):
     """Proxy to Order Service."""
-    response = await proxy_request("order", f"/{path}", request, user_data)
-    return response.json()
+    response = await proxy_request("order", f"/orders/{path}", request, user_data)
+    return response
 
 
+# Pricing Service Routes
 @app.api_route("/pricing/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH"])
 async def pricing_service(path: str, request: Request, user_data: dict = Depends(verify_token)):
-    """Proxy to Pricing Service."""
-    response = await proxy_request("pricing", f"/{path}", request, user_data)
-    return response.json()
+    """Proxy to Pricing Service - Price comparison and management."""
+    response = await proxy_request("pricing", f"/api/v1/pricing/{path}", request, user_data)
+    return response
+
+
+@app.api_route("/vendors/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH"])
+async def vendors_service(path: str, request: Request, user_data: dict = Depends(verify_token)):
+    """Proxy to Pricing Service - Vendor discovery and management."""
+    response = await proxy_request("pricing", f"/api/v1/vendors/{path}", request, user_data)
+    return response
+
+
+@app.api_route("/products/catalog/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH"])
+async def product_catalog_service(path: str, request: Request, user_data: dict = Depends(verify_token)):
+    """Proxy to Pricing Service - Product catalog browsing."""
+    response = await proxy_request("pricing", f"/api/v1/products/catalog/{path}", request, user_data)
+    return response
+
+
+@app.api_route("/products/search", methods=["POST"])
+async def product_search_service(request: Request, user_data: dict = Depends(verify_token)):
+    """Proxy to Pricing Service - Advanced product search."""
+    response = await proxy_request("pricing", "/api/v1/products/search", request, user_data)
+    return response
+
+
+@app.api_route("/products/availability/check", methods=["POST"])
+async def product_availability_service(request: Request, user_data: dict = Depends(verify_token)):
+    """Proxy to Pricing Service - Product availability checking."""
+    response = await proxy_request("pricing", "/api/v1/products/availability/check", request, user_data)
+    return response
+
+
+# Product Catalog Routes (Inventory Service)
+@app.api_route("/catalog/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH"])
+async def catalog_service(path: str, request: Request, user_data: dict = Depends(verify_token)):
+    """Proxy to Inventory Service Product Catalog."""
+    response = await proxy_request("inventory", f"/catalog/{path}", request, user_data)
+    return response
+
+
+# Direct Ordering Routes (Order Service)
+@app.api_route("/orders/direct", methods=["POST"])
+async def direct_order_service(request: Request, user_data: dict = Depends(verify_token)):
+    """Proxy to Order Service Direct Ordering."""
+    response = await proxy_request("order", "/orders/direct", request, user_data)
+    return response
+
+
+@app.api_route("/orders/pricing", methods=["POST"])
+async def order_pricing_service(request: Request, user_data: dict = Depends(verify_token)):
+    """Proxy to Order Service Pricing."""
+    response = await proxy_request("order", "/orders/pricing", request, user_data)
+    return response
 
 
 @app.api_route("/delivery/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH"])
 async def delivery_service(path: str, request: Request, user_data: dict = Depends(verify_token)):
     """Proxy to Delivery Service."""
     response = await proxy_request("delivery", f"/{path}", request, user_data)
-    return response.json()
+    return response
 
 
 @app.api_route("/payments/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH"])
 async def payment_service(path: str, request: Request, user_data: dict = Depends(verify_token)):
     """Proxy to Payment Service."""
-    response = await proxy_request("payment", f"/{path}", request, user_data)
-    return response.json()
+    response = await proxy_request("payment", f"/payments/{path}", request, user_data)
+    return response
 
 
 @app.api_route("/reviews/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH"])
 async def review_service(path: str, request: Request, user_data: dict = Depends(verify_token)):
     """Proxy to Review Service."""
     response = await proxy_request("review", f"/{path}", request, user_data)
-    return response.json()
+    return response
 
 
 @app.api_route("/notifications/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH"])
 async def notification_service(path: str, request: Request, user_data: dict = Depends(verify_token)):
     """Proxy to Notification Service."""
     response = await proxy_request("notification", f"/{path}", request, user_data)
-    return response.json()
+    return response
 
 
 @app.api_route("/admin/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH"])
@@ -605,9 +671,9 @@ async def admin_service(path: str, request: Request, user_data: dict = Depends(v
     # Check if user has admin role
     if user_data.get("role") != "admin":
         raise HTTPException(status_code=403, detail="Admin access required")
-    
+
     response = await proxy_request("admin", f"/{path}", request, user_data)
-    return response.json()
+    return response
 
 
 if __name__ == "__main__":

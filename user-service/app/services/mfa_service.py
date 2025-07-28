@@ -144,8 +144,8 @@ class MFAService:
             backup_codes = self.generate_backup_codes()
             
             # Encrypt sensitive data
-            encrypted_secret = encryption_manager.encrypt_data(secret_key)
-            encrypted_backup_codes = encryption_manager.encrypt_data(json.dumps(backup_codes))
+            encrypted_secret = encryption_manager.encrypt_field(secret_key, "mfa_secret")
+            encrypted_backup_codes = encryption_manager.encrypt_field(json.dumps(backup_codes), "mfa_backup")
             
             # Create MFA device record
             mfa_device = MFADevice(
@@ -204,7 +204,7 @@ class MFAService:
                 raise ValueError("MFA device not found or already activated")
             
             # Decrypt secret key
-            secret_key = encryption_manager.decrypt_data(device.secret_key)
+            secret_key = encryption_manager.decrypt_field(device.secret_key, "mfa_secret")
             
             # Verify code
             if not self.verify_totp_code(secret_key, verification_code):
@@ -255,7 +255,7 @@ class MFAService:
                 return False
             
             # Try TOTP verification first
-            secret_key = encryption_manager.decrypt_data(device.secret_key)
+            secret_key = encryption_manager.decrypt_field(device.secret_key, "mfa_secret")
             if self.verify_totp_code(secret_key, code):
                 # Update last used
                 device.last_used = datetime.utcnow()
@@ -263,13 +263,13 @@ class MFAService:
                 return True
             
             # Try backup code verification
-            backup_codes_json = encryption_manager.decrypt_data(device.backup_codes)
+            backup_codes_json = encryption_manager.decrypt_field(device.backup_codes, "mfa_backup")
             backup_codes = json.loads(backup_codes_json)
-            
+
             is_valid, updated_codes = self.verify_backup_code(backup_codes, code)
             if is_valid:
                 # Update backup codes
-                device.backup_codes = encryption_manager.encrypt_data(json.dumps(updated_codes))
+                device.backup_codes = encryption_manager.encrypt_field(json.dumps(updated_codes), "mfa_backup")
                 device.last_used = datetime.utcnow()
                 await db.commit()
                 return True
@@ -374,7 +374,7 @@ class MFAService:
             new_backup_codes = self.generate_backup_codes()
             
             # Update device
-            device.backup_codes = encryption_manager.encrypt_data(json.dumps(new_backup_codes))
+            device.backup_codes = encryption_manager.encrypt_field(json.dumps(new_backup_codes), "mfa_backup")
             await db.commit()
             
             return new_backup_codes

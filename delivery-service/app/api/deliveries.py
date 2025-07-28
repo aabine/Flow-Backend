@@ -16,10 +16,7 @@ from app.schemas.delivery import (
     DeliveryAssignment, ETARequest, ETAResponse
 )
 from shared.models import APIResponse
-
-# Temporary auth dependency - replace with proper auth integration
-async def get_current_user():
-    return {"user_id": "temp-user", "role": "customer"}
+from shared.security.auth import get_current_user
 
 router = APIRouter()
 delivery_service = DeliveryService()

@@ -30,6 +30,7 @@ from app.services.notification_service import NotificationService
 from app.services.email_service import EmailService
 from app.services.sms_service import SMSService
 from app.services.event_service import event_service
+from shared.security.auth import get_current_user
 
 # Define missing models locally
 from enum import Enum
@@ -108,17 +109,7 @@ email_service = EmailService()
 sms_service = SMSService()
 
 
-def get_current_user(
-    x_user_id: Optional[str] = Header(None),
-    x_user_role: Optional[str] = Header(None)
-) -> dict:
-    """Get current user from headers (set by API Gateway)."""
-    if not x_user_id or not x_user_role:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="User authentication required"
-        )
-    return {"user_id": x_user_id, "role": x_user_role}
+# Using shared authentication function from shared.security.auth
 
 
 @app.get("/")

@@ -18,26 +18,14 @@ from app.schemas.admin import (
     AuditLogResponse, PaginatedResponse
 )
 from shared.models import APIResponse, UserRole
+from shared.security.auth import get_current_admin_user
 
 router = APIRouter()
 user_management_service = UserManagementService()
 monitoring_service = SystemMonitoringService()
 
 
-async def get_current_admin_user(
-    x_user_id: str = Header(..., alias="X-User-ID"),
-    x_user_role: str = Header(..., alias="X-User-Role")
-) -> dict:
-    """Get current admin user from headers (set by API Gateway)."""
-    if UserRole(x_user_role) != UserRole.ADMIN:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Admin access required"
-        )
-    return {
-        "user_id": x_user_id,
-        "role": UserRole(x_user_role)
-    }
+# Using shared authentication function from shared.security.auth
 
 
 # User Management Routes

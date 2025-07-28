@@ -476,6 +476,44 @@ class DatabaseInitializer:
                         'CREATE INDEX IF NOT EXISTS idx_locations_default ON locations(is_default)',
                     ]
                 ),
+                TableDefinition(
+                    name='emergency_zones',
+                    service='location',
+                    columns=[
+                        ColumnDefinition('id', 'UUID', False, True, default='gen_random_uuid()'),
+                        ColumnDefinition('name', 'VARCHAR(255)', False),
+                        ColumnDefinition('center_latitude', 'DOUBLE PRECISION', False),
+                        ColumnDefinition('center_longitude', 'DOUBLE PRECISION', False),
+                        ColumnDefinition('radius_km', 'DECIMAL(8,2)', False),
+                        ColumnDefinition('priority_level', 'INTEGER', False, default='1'),
+                        ColumnDefinition('is_active', 'BOOLEAN', False, default='TRUE'),
+                        ColumnDefinition('created_at', 'TIMESTAMPTZ', False, default='NOW()'),
+                        ColumnDefinition('updated_at', 'TIMESTAMPTZ'),
+                    ],
+                    indexes=[
+                        'CREATE INDEX IF NOT EXISTS idx_emergency_zones_center ON emergency_zones(center_latitude, center_longitude)',
+                        'CREATE INDEX IF NOT EXISTS idx_emergency_zones_priority ON emergency_zones(priority_level)',
+                    ]
+                ),
+                TableDefinition(
+                    name='service_areas',
+                    service='location',
+                    columns=[
+                        ColumnDefinition('id', 'UUID', False, True, default='gen_random_uuid()'),
+                        ColumnDefinition('vendor_id', 'UUID', False, foreign_key='users(id)', index=True),
+                        ColumnDefinition('name', 'VARCHAR(255)', False),
+                        ColumnDefinition('center_latitude', 'DOUBLE PRECISION', False),
+                        ColumnDefinition('center_longitude', 'DOUBLE PRECISION', False),
+                        ColumnDefinition('radius_km', 'DECIMAL(8,2)', False),
+                        ColumnDefinition('is_active', 'BOOLEAN', False, default='TRUE'),
+                        ColumnDefinition('created_at', 'TIMESTAMPTZ', False, default='NOW()'),
+                        ColumnDefinition('updated_at', 'TIMESTAMPTZ'),
+                    ],
+                    indexes=[
+                        'CREATE INDEX IF NOT EXISTS idx_service_areas_vendor ON service_areas(vendor_id)',
+                        'CREATE INDEX IF NOT EXISTS idx_service_areas_center ON service_areas(center_latitude, center_longitude)',
+                    ]
+                ),
             ]
         )
 
@@ -712,6 +750,7 @@ class DatabaseInitializer:
 
         logger.info("✅ Supplier service schema defined")
 
+
         # Delivery Service Schema
         self.schemas['delivery'] = ServiceSchema(
             service_name='delivery',
@@ -758,35 +797,291 @@ class DatabaseInitializer:
 
         logger.info("✅ Delivery service schema defined")
 
-        # Pricing Service Schema
+        # Pricing Service Schema - Comprehensive vendor and product management
         self.schemas['pricing'] = ServiceSchema(
             service_name='pricing',
             tables=[
+                # Vendors table
                 TableDefinition(
-                    name='quote_requests',
+                    name='vendors',
                     service='pricing',
                     columns=[
                         ColumnDefinition('id', 'UUID', False, True, default='gen_random_uuid()'),
-                        ColumnDefinition('hospital_id', 'UUID', False, foreign_key='users(id)', index=True),
-                        ColumnDefinition('cylinder_size', 'VARCHAR(20)', False, index=True),
-                        ColumnDefinition('quantity', 'INTEGER', False),
-                        ColumnDefinition('delivery_address', 'TEXT', False),
-                        ColumnDefinition('delivery_latitude', 'DOUBLE PRECISION', False),
-                        ColumnDefinition('delivery_longitude', 'DOUBLE PRECISION', False),
-                        ColumnDefinition('required_delivery_date', 'TIMESTAMPTZ', False),
-                        ColumnDefinition('max_delivery_distance_km', 'DOUBLE PRECISION', False, default='50.0'),
-                        ColumnDefinition('status', 'VARCHAR(20)', False, default="'open'", index=True),
-                        ColumnDefinition('expires_at', 'TIMESTAMPTZ', False),
-                        ColumnDefinition('special_requirements', 'TEXT'),
-                        ColumnDefinition('metadata', 'JSONB'),
+                        ColumnDefinition('user_id', 'UUID', False, foreign_key='users(id)', unique=True, index=True),
+                        ColumnDefinition('business_name', 'VARCHAR(255)', False, index=True),
+                        ColumnDefinition('business_registration_number', 'VARCHAR(100)'),
+                        ColumnDefinition('tax_identification_number', 'VARCHAR(100)'),
+                        ColumnDefinition('contact_person', 'VARCHAR(255)'),
+                        ColumnDefinition('contact_phone', 'VARCHAR(20)'),
+                        ColumnDefinition('contact_email', 'VARCHAR(255)'),
+                        ColumnDefinition('business_address', 'TEXT'),
+                        ColumnDefinition('business_city', 'VARCHAR(100)'),
+                        ColumnDefinition('business_state', 'VARCHAR(100)'),
+                        ColumnDefinition('business_country', 'VARCHAR(100)', False, default="'Nigeria'"),
+                        ColumnDefinition('postal_code', 'VARCHAR(20)'),
+                        ColumnDefinition('business_type', 'VARCHAR(50)', False, default="'medical_supplier'"),
+                        ColumnDefinition('years_in_business', 'INTEGER'),
+                        ColumnDefinition('license_number', 'VARCHAR(100)'),
+                        ColumnDefinition('certification_details', 'JSONB'),
+                        ColumnDefinition('verification_status', 'VARCHAR(50)', False, default="'pending'", index=True),
+                        ColumnDefinition('is_active', 'BOOLEAN', False, default='TRUE', index=True),
+                        ColumnDefinition('is_featured', 'BOOLEAN', False, default='FALSE'),
+                        ColumnDefinition('rejection_reason', 'TEXT'),
+                        ColumnDefinition('average_rating', 'DECIMAL(3,2)', False, default='0.0'),
+                        ColumnDefinition('total_orders', 'INTEGER', False, default='0'),
+                        ColumnDefinition('successful_deliveries', 'INTEGER', False, default='0'),
+                        ColumnDefinition('response_time_hours', 'DECIMAL(5,2)', False, default='24.0'),
+                        ColumnDefinition('operating_hours', 'JSONB'),
+                        ColumnDefinition('emergency_contact', 'VARCHAR(20)'),
+                        ColumnDefinition('emergency_surcharge_percentage', 'DECIMAL(5,2)', False, default='0.0'),
+                        ColumnDefinition('minimum_order_value', 'DECIMAL(10,2)', False, default='0.0'),
+                        ColumnDefinition('vendor_metadata', 'JSONB'),
+                        ColumnDefinition('created_at', 'TIMESTAMPTZ', False, default='NOW()'),
+                        ColumnDefinition('updated_at', 'TIMESTAMPTZ'),
+                        ColumnDefinition('verified_at', 'TIMESTAMPTZ'),
+                        ColumnDefinition('last_active_at', 'TIMESTAMPTZ'),
+                    ],
+                    indexes=[
+                        'CREATE INDEX IF NOT EXISTS idx_vendors_user_id ON vendors(user_id)',
+                        'CREATE INDEX IF NOT EXISTS idx_vendors_business_name ON vendors(business_name)',
+                        'CREATE INDEX IF NOT EXISTS idx_vendors_verification_status ON vendors(verification_status)',
+                        'CREATE INDEX IF NOT EXISTS idx_vendors_is_active ON vendors(is_active)',
+                        'CREATE INDEX IF NOT EXISTS idx_vendors_business_type ON vendors(business_type)',
+                        'CREATE INDEX IF NOT EXISTS idx_vendors_rating ON vendors(average_rating)',
+                    ]
+                ),
+                # Vendor profiles table
+                TableDefinition(
+                    name='vendor_profiles',
+                    service='pricing',
+                    columns=[
+                        ColumnDefinition('id', 'UUID', False, True, default='gen_random_uuid()'),
+                        ColumnDefinition('vendor_id', 'UUID', False, foreign_key='vendors(id)', unique=True, index=True),
+                        ColumnDefinition('company_description', 'TEXT'),
+                        ColumnDefinition('company_logo_url', 'VARCHAR(500)'),
+                        ColumnDefinition('website_url', 'VARCHAR(255)'),
+                        ColumnDefinition('social_media_links', 'JSONB'),
+                        ColumnDefinition('specializations', 'JSONB'),
+                        ColumnDefinition('certifications', 'JSONB'),
+                        ColumnDefinition('quality_standards', 'JSONB'),
+                        ColumnDefinition('delivery_methods', 'JSONB'),
+                        ColumnDefinition('payment_methods', 'JSONB'),
+                        ColumnDefinition('return_policy', 'TEXT'),
+                        ColumnDefinition('warranty_policy', 'TEXT'),
+                        ColumnDefinition('coverage_areas', 'JSONB'),
+                        ColumnDefinition('delivery_zones', 'JSONB'),
+                        ColumnDefinition('on_time_delivery_rate', 'DECIMAL(5,2)', False, default='0.0'),
+                        ColumnDefinition('customer_satisfaction_score', 'DECIMAL(3,2)', False, default='0.0'),
+                        ColumnDefinition('order_fulfillment_rate', 'DECIMAL(5,2)', False, default='0.0'),
+                        ColumnDefinition('preferred_communication_method', 'VARCHAR(50)', False, default="'email'"),
+                        ColumnDefinition('notification_preferences', 'JSONB'),
                         ColumnDefinition('created_at', 'TIMESTAMPTZ', False, default='NOW()'),
                         ColumnDefinition('updated_at', 'TIMESTAMPTZ'),
                     ],
                     indexes=[
-                        'CREATE INDEX IF NOT EXISTS idx_quote_requests_hospital_id ON quote_requests(hospital_id)',
-                        'CREATE INDEX IF NOT EXISTS idx_quote_requests_status ON quote_requests(status)',
-                        'CREATE INDEX IF NOT EXISTS idx_quote_requests_cylinder_size ON quote_requests(cylinder_size)',
-                        'CREATE INDEX IF NOT EXISTS idx_quote_requests_delivery_date ON quote_requests(required_delivery_date)',
+                        'CREATE INDEX IF NOT EXISTS idx_vendor_profiles_vendor_id ON vendor_profiles(vendor_id)',
+                    ]
+                ),
+                # Service areas table
+                TableDefinition(
+                    name='service_areas',
+                    service='pricing',
+                    columns=[
+                        ColumnDefinition('id', 'UUID', False, True, default='gen_random_uuid()'),
+                        ColumnDefinition('vendor_id', 'UUID', False, foreign_key='vendors(id)', index=True),
+                        ColumnDefinition('area_name', 'VARCHAR(255)', False),
+                        ColumnDefinition('area_type', 'VARCHAR(50)', False),
+                        ColumnDefinition('center_latitude', 'DECIMAL(10,8)'),
+                        ColumnDefinition('center_longitude', 'DECIMAL(11,8)'),
+                        ColumnDefinition('radius_km', 'DECIMAL(8,2)'),
+                        ColumnDefinition('boundary_coordinates', 'JSONB'),
+                        ColumnDefinition('state', 'VARCHAR(100)'),
+                        ColumnDefinition('cities', 'JSONB'),
+                        ColumnDefinition('postal_codes', 'JSONB'),
+                        ColumnDefinition('delivery_fee', 'DECIMAL(10,2)', False, default='0.0'),
+                        ColumnDefinition('minimum_order_value', 'DECIMAL(10,2)', False, default='0.0'),
+                        ColumnDefinition('estimated_delivery_time_hours', 'INTEGER', False, default='24'),
+                        ColumnDefinition('emergency_delivery_available', 'BOOLEAN', False, default='FALSE'),
+                        ColumnDefinition('emergency_delivery_time_hours', 'INTEGER'),
+                        ColumnDefinition('is_active', 'BOOLEAN', False, default='TRUE', index=True),
+                        ColumnDefinition('priority_level', 'INTEGER', False, default='1'),
+                        ColumnDefinition('created_at', 'TIMESTAMPTZ', False, default='NOW()'),
+                        ColumnDefinition('updated_at', 'TIMESTAMPTZ'),
+                    ],
+                    indexes=[
+                        'CREATE INDEX IF NOT EXISTS idx_service_areas_vendor_id ON service_areas(vendor_id)',
+                        'CREATE INDEX IF NOT EXISTS idx_service_areas_coordinates ON service_areas(center_latitude, center_longitude)',
+                        'CREATE INDEX IF NOT EXISTS idx_service_areas_active ON service_areas(is_active)',
+                    ]
+                ),
+                # Product catalogs table
+                TableDefinition(
+                    name='product_catalogs',
+                    service='pricing',
+                    columns=[
+                        ColumnDefinition('id', 'UUID', False, True, default='gen_random_uuid()'),
+                        ColumnDefinition('vendor_id', 'UUID', False, foreign_key='vendors(id)', index=True),
+                        ColumnDefinition('product_code', 'VARCHAR(100)', False, index=True),
+                        ColumnDefinition('product_name', 'VARCHAR(255)', False, index=True),
+                        ColumnDefinition('product_category', 'VARCHAR(100)', False, index=True),
+                        ColumnDefinition('product_subcategory', 'VARCHAR(100)'),
+                        ColumnDefinition('cylinder_size', 'VARCHAR(20)', index=True),
+                        ColumnDefinition('capacity_liters', 'DECIMAL(8,2)'),
+                        ColumnDefinition('pressure_bar', 'DECIMAL(8,2)'),
+                        ColumnDefinition('gas_type', 'VARCHAR(50)', False, default="'medical_oxygen'"),
+                        ColumnDefinition('purity_percentage', 'DECIMAL(5,2)'),
+                        ColumnDefinition('dimensions', 'JSONB'),
+                        ColumnDefinition('weight_kg', 'DECIMAL(8,2)'),
+                        ColumnDefinition('material', 'VARCHAR(100)'),
+                        ColumnDefinition('color', 'VARCHAR(50)'),
+                        ColumnDefinition('description', 'TEXT'),
+                        ColumnDefinition('features', 'JSONB'),
+                        ColumnDefinition('specifications', 'JSONB'),
+                        ColumnDefinition('usage_instructions', 'TEXT'),
+                        ColumnDefinition('safety_information', 'TEXT'),
+                        ColumnDefinition('certifications', 'JSONB'),
+                        ColumnDefinition('regulatory_approvals', 'JSONB'),
+                        ColumnDefinition('quality_standards', 'JSONB'),
+                        ColumnDefinition('product_images', 'JSONB'),
+                        ColumnDefinition('product_documents', 'JSONB'),
+                        ColumnDefinition('is_available', 'BOOLEAN', False, default='TRUE', index=True),
+                        ColumnDefinition('stock_status', 'VARCHAR(50)', False, default="'in_stock'", index=True),
+                        ColumnDefinition('minimum_order_quantity', 'INTEGER', False, default='1'),
+                        ColumnDefinition('maximum_order_quantity', 'INTEGER'),
+                        ColumnDefinition('base_price', 'DECIMAL(10,2)'),
+                        ColumnDefinition('currency', 'VARCHAR(3)', False, default="'NGN'"),
+                        ColumnDefinition('vendor_product_code', 'VARCHAR(100)'),
+                        ColumnDefinition('manufacturer', 'VARCHAR(255)'),
+                        ColumnDefinition('brand', 'VARCHAR(100)'),
+                        ColumnDefinition('model_number', 'VARCHAR(100)'),
+                        ColumnDefinition('requires_special_handling', 'BOOLEAN', False, default='FALSE'),
+                        ColumnDefinition('hazardous_material', 'BOOLEAN', False, default='FALSE'),
+                        ColumnDefinition('storage_requirements', 'TEXT'),
+                        ColumnDefinition('shelf_life_days', 'INTEGER'),
+                        ColumnDefinition('search_keywords', 'JSONB'),
+                        ColumnDefinition('tags', 'JSONB'),
+                        ColumnDefinition('is_featured', 'BOOLEAN', False, default='FALSE'),
+                        ColumnDefinition('is_active', 'BOOLEAN', False, default='TRUE', index=True),
+                        ColumnDefinition('approval_status', 'VARCHAR(50)', False, default="'pending'", index=True),
+                        ColumnDefinition('product_metadata', 'JSONB'),
+                        ColumnDefinition('created_at', 'TIMESTAMPTZ', False, default='NOW()'),
+                        ColumnDefinition('updated_at', 'TIMESTAMPTZ'),
+                        ColumnDefinition('approved_at', 'TIMESTAMPTZ'),
+                    ],
+                    indexes=[
+                        'CREATE INDEX IF NOT EXISTS idx_product_catalogs_vendor_id ON product_catalogs(vendor_id)',
+                        'CREATE INDEX IF NOT EXISTS idx_product_catalogs_product_code ON product_catalogs(product_code)',
+                        'CREATE INDEX IF NOT EXISTS idx_product_catalogs_product_name ON product_catalogs(product_name)',
+                        'CREATE INDEX IF NOT EXISTS idx_product_catalogs_category ON product_catalogs(product_category)',
+                        'CREATE INDEX IF NOT EXISTS idx_product_catalogs_cylinder_size ON product_catalogs(cylinder_size)',
+                        'CREATE INDEX IF NOT EXISTS idx_product_catalogs_available ON product_catalogs(is_available)',
+                        'CREATE INDEX IF NOT EXISTS idx_product_catalogs_stock_status ON product_catalogs(stock_status)',
+                        'CREATE INDEX IF NOT EXISTS idx_product_catalogs_active ON product_catalogs(is_active)',
+                        'CREATE INDEX IF NOT EXISTS idx_product_catalogs_approval ON product_catalogs(approval_status)',
+                    ]
+                ),
+                # Pricing tiers table
+                TableDefinition(
+                    name='pricing_tiers',
+                    service='pricing',
+                    columns=[
+                        ColumnDefinition('id', 'UUID', False, True, default='gen_random_uuid()'),
+                        ColumnDefinition('vendor_id', 'UUID', False, foreign_key='vendors(id)', index=True),
+                        ColumnDefinition('product_id', 'UUID', False, foreign_key='product_catalogs(id)', index=True),
+                        ColumnDefinition('service_area_id', 'UUID', foreign_key='service_areas(id)', index=True),
+                        ColumnDefinition('tier_name', 'VARCHAR(100)', False),
+                        ColumnDefinition('unit_price', 'DECIMAL(10,2)', False),
+                        ColumnDefinition('currency', 'VARCHAR(3)', False, default="'NGN'"),
+                        ColumnDefinition('minimum_quantity', 'INTEGER', False, default='1'),
+                        ColumnDefinition('maximum_quantity', 'INTEGER'),
+                        ColumnDefinition('delivery_fee', 'DECIMAL(10,2)', False, default='0.0'),
+                        ColumnDefinition('setup_fee', 'DECIMAL(10,2)', False, default='0.0'),
+                        ColumnDefinition('handling_fee', 'DECIMAL(10,2)', False, default='0.0'),
+                        ColumnDefinition('emergency_surcharge', 'DECIMAL(10,2)', False, default='0.0'),
+                        ColumnDefinition('bulk_discount_percentage', 'DECIMAL(5,2)', False, default='0.0'),
+                        ColumnDefinition('loyalty_discount_percentage', 'DECIMAL(5,2)', False, default='0.0'),
+                        ColumnDefinition('seasonal_discount_percentage', 'DECIMAL(5,2)', False, default='0.0'),
+                        ColumnDefinition('effective_from', 'TIMESTAMPTZ', False, default='NOW()'),
+                        ColumnDefinition('effective_until', 'TIMESTAMPTZ'),
+                        ColumnDefinition('is_active', 'BOOLEAN', False, default='TRUE', index=True),
+                        ColumnDefinition('payment_terms', 'VARCHAR(100)'),
+                        ColumnDefinition('minimum_order_value', 'DECIMAL(10,2)'),
+                        ColumnDefinition('cancellation_policy', 'TEXT'),
+                        ColumnDefinition('priority_rank', 'INTEGER', False, default='1'),
+                        ColumnDefinition('is_featured', 'BOOLEAN', False, default='FALSE'),
+                        ColumnDefinition('is_promotional', 'BOOLEAN', False, default='FALSE'),
+                        ColumnDefinition('pricing_notes', 'TEXT'),
+                        ColumnDefinition('internal_notes', 'TEXT'),
+                        ColumnDefinition('pricing_metadata', 'JSONB'),
+                        ColumnDefinition('created_at', 'TIMESTAMPTZ', False, default='NOW()'),
+                        ColumnDefinition('updated_at', 'TIMESTAMPTZ'),
+                    ],
+                    indexes=[
+                        'CREATE INDEX IF NOT EXISTS idx_pricing_tiers_vendor_id ON pricing_tiers(vendor_id)',
+                        'CREATE INDEX IF NOT EXISTS idx_pricing_tiers_product_id ON pricing_tiers(product_id)',
+                        'CREATE INDEX IF NOT EXISTS idx_pricing_tiers_service_area_id ON pricing_tiers(service_area_id)',
+                        'CREATE INDEX IF NOT EXISTS idx_pricing_tiers_active ON pricing_tiers(is_active)',
+                        'CREATE INDEX IF NOT EXISTS idx_pricing_tiers_effective ON pricing_tiers(effective_from, effective_until)',
+                    ]
+                ),
+                # Price history table
+                TableDefinition(
+                    name='price_history',
+                    service='pricing',
+                    columns=[
+                        ColumnDefinition('id', 'UUID', False, True, default='gen_random_uuid()'),
+                        ColumnDefinition('pricing_tier_id', 'UUID', False, foreign_key='pricing_tiers(id)', index=True),
+                        ColumnDefinition('vendor_id', 'UUID', False, foreign_key='vendors(id)', index=True),
+                        ColumnDefinition('product_id', 'UUID', False, foreign_key='product_catalogs(id)', index=True),
+                        ColumnDefinition('old_unit_price', 'DECIMAL(10,2)'),
+                        ColumnDefinition('new_unit_price', 'DECIMAL(10,2)'),
+                        ColumnDefinition('old_delivery_fee', 'DECIMAL(10,2)'),
+                        ColumnDefinition('new_delivery_fee', 'DECIMAL(10,2)'),
+                        ColumnDefinition('change_type', 'VARCHAR(50)', False, index=True),
+                        ColumnDefinition('change_percentage', 'DECIMAL(5,2)'),
+                        ColumnDefinition('change_reason', 'VARCHAR(255)'),
+                        ColumnDefinition('change_notes', 'TEXT'),
+                        ColumnDefinition('market_conditions', 'JSONB'),
+                        ColumnDefinition('competitor_pricing', 'JSONB'),
+                        ColumnDefinition('effective_date', 'TIMESTAMPTZ', False),
+                        ColumnDefinition('recorded_at', 'TIMESTAMPTZ', False, default='NOW()'),
+                    ],
+                    indexes=[
+                        'CREATE INDEX IF NOT EXISTS idx_price_history_pricing_tier_id ON price_history(pricing_tier_id)',
+                        'CREATE INDEX IF NOT EXISTS idx_price_history_vendor_id ON price_history(vendor_id)',
+                        'CREATE INDEX IF NOT EXISTS idx_price_history_product_id ON price_history(product_id)',
+                        'CREATE INDEX IF NOT EXISTS idx_price_history_change_type ON price_history(change_type)',
+                        'CREATE INDEX IF NOT EXISTS idx_price_history_effective_date ON price_history(effective_date)',
+                    ]
+                ),
+                # Price alerts table
+                TableDefinition(
+                    name='price_alerts',
+                    service='pricing',
+                    columns=[
+                        ColumnDefinition('id', 'UUID', False, True, default='gen_random_uuid()'),
+                        ColumnDefinition('user_id', 'UUID', False, foreign_key='users(id)', index=True),
+                        ColumnDefinition('product_id', 'UUID', False, foreign_key='product_catalogs(id)', index=True),
+                        ColumnDefinition('vendor_id', 'UUID', foreign_key='vendors(id)', index=True),
+                        ColumnDefinition('alert_type', 'VARCHAR(50)', False, index=True),
+                        ColumnDefinition('target_price', 'DECIMAL(10,2)'),
+                        ColumnDefinition('price_threshold_percentage', 'DECIMAL(5,2)'),
+                        ColumnDefinition('is_active', 'BOOLEAN', False, default='TRUE', index=True),
+                        ColumnDefinition('notification_method', 'VARCHAR(50)', False, default="'email'"),
+                        ColumnDefinition('frequency', 'VARCHAR(50)', False, default="'immediate'"),
+                        ColumnDefinition('last_triggered_at', 'TIMESTAMPTZ'),
+                        ColumnDefinition('trigger_count', 'INTEGER', False, default='0'),
+                        ColumnDefinition('last_price_checked', 'DECIMAL(10,2)'),
+                        ColumnDefinition('expires_at', 'TIMESTAMPTZ'),
+                        ColumnDefinition('created_at', 'TIMESTAMPTZ', False, default='NOW()'),
+                        ColumnDefinition('updated_at', 'TIMESTAMPTZ'),
+                    ],
+                    indexes=[
+                        'CREATE INDEX IF NOT EXISTS idx_price_alerts_user_id ON price_alerts(user_id)',
+                        'CREATE INDEX IF NOT EXISTS idx_price_alerts_product_id ON price_alerts(product_id)',
+                        'CREATE INDEX IF NOT EXISTS idx_price_alerts_vendor_id ON price_alerts(vendor_id)',
+                        'CREATE INDEX IF NOT EXISTS idx_price_alerts_alert_type ON price_alerts(alert_type)',
+                        'CREATE INDEX IF NOT EXISTS idx_price_alerts_active ON price_alerts(is_active)',
                     ]
                 ),
             ]
@@ -872,7 +1167,7 @@ class DatabaseInitializer:
                 'admin_users', 'audit_logs',
                 'suppliers', 'documents',
                 'deliveries',
-                'quote_requests'
+                'product_pricing'
             ]
 
             for table_name in critical_tables:
@@ -994,6 +1289,21 @@ async def create_production_schema():
 
         conn = initializer.conn
 
+        # Create enums first (required by tables)
+        enums = [
+            "CREATE TYPE IF NOT EXISTS paymentstatus AS ENUM ('pending', 'processing', 'completed', 'failed', 'refunded')",
+            "CREATE TYPE IF NOT EXISTS deliverystatus AS ENUM ('pending', 'assigned', 'picked_up', 'in_transit', 'delivered', 'failed')",
+            "CREATE TYPE IF NOT EXISTS orderstatus AS ENUM ('pending', 'confirmed', 'processing', 'shipped', 'delivered', 'cancelled')",
+            "CREATE TYPE IF NOT EXISTS notificationtype AS ENUM ('email', 'sms', 'push', 'in_app')",
+        ]
+
+        for enum_sql in enums:
+            try:
+                await conn.execute(enum_sql)
+                logger.info(f"✅ Created enum: {enum_sql.split()[4]}")
+            except Exception as e:
+                logger.warning(f"⚠️ Enum creation warning: {e}")
+
         # Core tables that all services depend on
         core_tables = [
             # Users table (foundation for all services)
@@ -1003,54 +1313,143 @@ async def create_production_schema():
                 password_hash VARCHAR(255) NOT NULL,
                 role VARCHAR(50) NOT NULL,
                 is_active BOOLEAN NOT NULL DEFAULT TRUE,
-                is_verified BOOLEAN NOT NULL DEFAULT FALSE,
-                verification_token VARCHAR(255),
-                reset_token VARCHAR(255),
-                reset_token_expires TIMESTAMPTZ,
+                email_verified BOOLEAN NOT NULL DEFAULT FALSE,
                 mfa_enabled BOOLEAN NOT NULL DEFAULT FALSE,
-                mfa_secret VARCHAR(255),
-                last_login TIMESTAMPTZ,
-                login_attempts INTEGER NOT NULL DEFAULT 0,
-                locked_until TIMESTAMPTZ,
+                failed_login_attempts INTEGER NOT NULL DEFAULT 0,
+                account_locked_until TIMESTAMPTZ,
+                password_changed_at TIMESTAMPTZ,
                 created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-                updated_at TIMESTAMPTZ
+                updated_at TIMESTAMPTZ,
+                last_login TIMESTAMPTZ
             )''',
 
             # User sessions for authentication
             '''CREATE TABLE IF NOT EXISTS user_sessions (
                 id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
                 user_id UUID NOT NULL,
-                session_token VARCHAR(255) NOT NULL UNIQUE,
-                refresh_token VARCHAR(255) NOT NULL UNIQUE,
-                expires_at TIMESTAMPTZ NOT NULL,
-                is_active BOOLEAN NOT NULL DEFAULT TRUE,
-                ip_address INET,
+                access_token_jti VARCHAR(255) NOT NULL UNIQUE,
+                refresh_token_jti VARCHAR(255),
+                ip_address VARCHAR(255),
                 user_agent TEXT,
                 created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-                last_accessed TIMESTAMPTZ
+                expires_at TIMESTAMPTZ NOT NULL,
+                last_activity TIMESTAMPTZ DEFAULT NOW(),
+                logged_out_at TIMESTAMPTZ,
+                is_active BOOLEAN DEFAULT TRUE,
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
             )''',
 
-            # Orders table
-            '''CREATE TABLE IF NOT EXISTS orders (
+            # User Profiles table
+            '''CREATE TABLE IF NOT EXISTS user_profiles (
                 id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-                user_id UUID NOT NULL,
-                order_number VARCHAR(50) NOT NULL UNIQUE,
-                status VARCHAR(50) NOT NULL,
-                priority VARCHAR(20) NOT NULL DEFAULT 'normal',
-                is_emergency BOOLEAN NOT NULL DEFAULT FALSE,
-                total_amount DECIMAL(10,2) NOT NULL,
-                currency VARCHAR(3) NOT NULL DEFAULT 'NGN',
-                delivery_address TEXT NOT NULL,
-                delivery_latitude DOUBLE PRECISION,
-                delivery_longitude DOUBLE PRECISION,
-                delivery_instructions TEXT,
-                required_delivery_date TIMESTAMPTZ,
-                estimated_delivery_date TIMESTAMPTZ,
-                actual_delivery_date TIMESTAMPTZ,
-                notes TEXT,
-                metadata JSONB,
+                user_id UUID NOT NULL UNIQUE,
+                first_name VARCHAR(255),
+                last_name VARCHAR(255),
+                phone_number VARCHAR(255),
+                address TEXT,
+                city VARCHAR(255),
+                state VARCHAR(255),
+                country VARCHAR(255) DEFAULT 'Nigeria',
+                avatar_url VARCHAR(255),
+                bio TEXT,
                 created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
                 updated_at TIMESTAMPTZ
+            )''',
+
+            # Hospital Profiles table
+            '''CREATE TABLE IF NOT EXISTS hospital_profiles (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                user_id UUID NOT NULL UNIQUE,
+                hospital_name VARCHAR(255) NOT NULL,
+                registration_number VARCHAR(255),
+                license_number VARCHAR(255),
+                contact_person VARCHAR(255),
+                contact_phone VARCHAR(255),
+                emergency_contact VARCHAR(255),
+                bed_capacity VARCHAR(255),
+                hospital_type VARCHAR(255),
+                services_offered TEXT,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                updated_at TIMESTAMPTZ
+            )''',
+
+            # Vendor Profiles table
+            '''CREATE TABLE IF NOT EXISTS vendor_profiles (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                user_id UUID NOT NULL UNIQUE,
+                business_name VARCHAR(255) NOT NULL,
+                registration_number VARCHAR(255),
+                tax_identification_number VARCHAR(255),
+                contact_person VARCHAR(255),
+                contact_phone VARCHAR(255),
+                business_address TEXT,
+                delivery_radius_km FLOAT,
+                operating_hours VARCHAR(255),
+                emergency_service BOOLEAN DEFAULT FALSE,
+                minimum_order_value FLOAT,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                updated_at TIMESTAMPTZ
+            )''',
+
+            # Security Events table
+            '''CREATE TABLE IF NOT EXISTS security_events (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                user_id UUID,
+                event_type VARCHAR(255) NOT NULL,
+                event_data VARCHAR(1000),
+                ip_address VARCHAR(255),
+                user_agent TEXT,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )''',
+
+            # Orders table (updated for order service)
+            '''CREATE TABLE IF NOT EXISTS orders (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                reference VARCHAR(255) NOT NULL UNIQUE,
+                hospital_id UUID NOT NULL,
+                vendor_id UUID,
+                status orderstatus NOT NULL DEFAULT 'pending',
+                is_emergency BOOLEAN NOT NULL DEFAULT FALSE,
+                delivery_address TEXT NOT NULL,
+                delivery_latitude DOUBLE PRECISION NOT NULL,
+                delivery_longitude DOUBLE PRECISION NOT NULL,
+                delivery_contact_name VARCHAR(255),
+                delivery_contact_phone VARCHAR(255),
+                notes TEXT,
+                special_instructions TEXT,
+                subtotal DECIMAL(10,2),
+                delivery_fee DECIMAL(10,2),
+                emergency_surcharge DECIMAL(10,2),
+                total_amount DECIMAL(10,2),
+                requested_delivery_time TIMESTAMPTZ,
+                estimated_delivery_time TIMESTAMPTZ,
+                actual_delivery_time TIMESTAMPTZ,
+                tracking_number VARCHAR(255),
+                delivery_notes TEXT,
+                cancellation_reason TEXT,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                updated_at TIMESTAMPTZ
+            )''',
+
+            # Order items table
+            '''CREATE TABLE IF NOT EXISTS order_items (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                order_id UUID NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
+                cylinder_size VARCHAR(50) NOT NULL,
+                quantity INTEGER NOT NULL,
+                unit_price DECIMAL(10,2),
+                total_price DECIMAL(10,2),
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )''',
+
+            # Order status history table
+            '''CREATE TABLE IF NOT EXISTS order_status_history (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                order_id UUID NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
+                status orderstatus NOT NULL,
+                notes TEXT,
+                updated_by UUID NOT NULL,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
             )''',
 
             # Payments table with all required columns
@@ -1064,8 +1463,8 @@ async def create_production_schema():
                 platform_fee DECIMAL(10,2) NOT NULL DEFAULT 0.00,
                 vendor_amount DECIMAL(10,2),
                 currency VARCHAR(3) NOT NULL DEFAULT 'NGN',
-                status VARCHAR(50) NOT NULL DEFAULT 'pending',
-                payment_method VARCHAR(50) NOT NULL,
+                status paymentstatus NOT NULL DEFAULT 'pending',
+                payment_method VARCHAR(50),
                 provider VARCHAR(50) NOT NULL DEFAULT 'paystack',
                 provider_reference VARCHAR(255),
                 paystack_reference VARCHAR(255),
@@ -1077,6 +1476,31 @@ async def create_production_schema():
                 created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
                 updated_at TIMESTAMPTZ,
                 completed_at TIMESTAMPTZ
+            )''',
+
+            # Payment splits table
+            '''CREATE TABLE IF NOT EXISTS payment_splits (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                payment_id UUID NOT NULL REFERENCES payments(id) ON DELETE CASCADE,
+                recipient_type VARCHAR(50) NOT NULL,
+                recipient_id UUID NOT NULL,
+                amount DECIMAL(10,2) NOT NULL,
+                percentage DECIMAL(5,2) NOT NULL,
+                status VARCHAR(50) NOT NULL DEFAULT 'pending',
+                paystack_split_code VARCHAR(255),
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                updated_at TIMESTAMPTZ
+            )''',
+
+            # Payment webhooks table
+            '''CREATE TABLE IF NOT EXISTS payment_webhooks (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                payment_id UUID REFERENCES payments(id) ON DELETE SET NULL,
+                event_type VARCHAR(100) NOT NULL,
+                paystack_reference VARCHAR(255) NOT NULL,
+                webhook_data JSONB NOT NULL,
+                processed BOOLEAN NOT NULL DEFAULT FALSE,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
             )''',
 
             # Notifications table with all required columns
@@ -1156,13 +1580,23 @@ async def create_production_schema():
             'CREATE INDEX IF NOT EXISTS idx_users_active ON users(is_active)',
             'CREATE INDEX IF NOT EXISTS idx_user_sessions_user_id ON user_sessions(user_id)',
             'CREATE INDEX IF NOT EXISTS idx_user_sessions_token ON user_sessions(session_token)',
-            'CREATE INDEX IF NOT EXISTS idx_orders_user_id ON orders(user_id)',
+            'CREATE INDEX IF NOT EXISTS idx_orders_hospital_id ON orders(hospital_id)',
+            'CREATE INDEX IF NOT EXISTS idx_orders_vendor_id ON orders(vendor_id)',
             'CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status)',
             'CREATE INDEX IF NOT EXISTS idx_orders_emergency ON orders(is_emergency)',
+            'CREATE INDEX IF NOT EXISTS idx_orders_reference ON orders(reference)',
+            'CREATE INDEX IF NOT EXISTS idx_orders_created_at ON orders(created_at)',
+            'CREATE INDEX IF NOT EXISTS idx_order_items_order_id ON order_items(order_id)',
+            'CREATE INDEX IF NOT EXISTS idx_order_status_history_order_id ON order_status_history(order_id)',
             'CREATE INDEX IF NOT EXISTS idx_payments_user_id ON payments(user_id)',
             'CREATE INDEX IF NOT EXISTS idx_payments_vendor_id ON payments(vendor_id)',
             'CREATE INDEX IF NOT EXISTS idx_payments_status ON payments(status)',
             'CREATE INDEX IF NOT EXISTS idx_payments_paystack_ref ON payments(paystack_reference)',
+            'CREATE INDEX IF NOT EXISTS idx_payments_reference ON payments(reference)',
+            'CREATE INDEX IF NOT EXISTS idx_payment_splits_payment_id ON payment_splits(payment_id)',
+            'CREATE INDEX IF NOT EXISTS idx_payment_splits_recipient ON payment_splits(recipient_id)',
+            'CREATE INDEX IF NOT EXISTS idx_payment_webhooks_payment_id ON payment_webhooks(payment_id)',
+            'CREATE INDEX IF NOT EXISTS idx_payment_webhooks_event ON payment_webhooks(event_type)',
             'CREATE INDEX IF NOT EXISTS idx_notifications_user_id ON notifications(user_id)',
             'CREATE INDEX IF NOT EXISTS idx_notifications_is_read ON notifications(is_read)',
             'CREATE INDEX IF NOT EXISTS idx_notifications_channel ON notifications(channel)',

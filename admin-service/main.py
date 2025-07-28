@@ -25,6 +25,9 @@ from app.core.database import init_db
 from app.services.event_listener_service import event_listener
 from app.services.system_monitoring_service import SystemMonitoringService
 
+# Import security middleware
+from shared.security.middleware import SecurityHeadersMiddleware, RateLimitMiddleware
+
 settings = get_settings()
 monitoring_service = SystemMonitoringService()
 
@@ -95,12 +98,34 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# CORS middleware
+# Security middleware (order matters!)
+app.add_middleware(SecurityHeadersMiddleware)
+
+# Add rate limiting middleware with error handling
+try:
+    app.add_middleware(RateLimitMiddleware, redis_url=settings.REDIS_URL, default_rate_limit=60)
+    logger.info("✅ Rate limiting middleware enabled")
+except Exception as e:
+    logger.warning(f"⚠️ Rate limiting middleware disabled: {e}")
+    logger.info("📝 Admin service will continue without rate limiting")
+
+# CORS middleware - Production-ready configuration
+allowed_origins = [
+    "https://oxygen-platform.com",
+    "https://admin.oxygen-platform.com",
+    "http://localhost:3000",  # Development frontend
+    "http://localhost:3001",  # Admin frontend
+]
+
+# Use wildcard only in development
+if settings.ENVIRONMENT == "development":
+    allowed_origins = ["*"]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Configure appropriately for production
+    allow_origins=allowed_origins,
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
     allow_headers=["*"],
 )
 

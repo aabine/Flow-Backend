@@ -1,76 +1,91 @@
-from pydantic_settings import BaseSettings
-from pydantic import Field
-from functools import lru_cache
+import os
 from typing import List
+from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
-    # Service Configuration
-    VERSION: str = Field("1.0.0", env="PRICING_SERVICE_VERSION")
-    SERVICE_NAME: str = Field("pricing-service", env="SERVICE_NAME")
-    DEBUG: bool = Field(False, env="DEBUG")
-
-    # Database Configuration
-    DATABASE_URL: str = Field(..., env="DATABASE_URL")
-    DATABASE_ECHO: bool = Field(False, env="DATABASE_ECHO")
-    DATABASE_SCHEMA: str = Field("pricing", env="DATABASE_SCHEMA")
-    POOL_SIZE: int = Field(5, env="POOL_SIZE")
-    MAX_OVERFLOW: int = Field(10, env="MAX_OVERFLOW")
-
-    # Redis Configuration
-    REDIS_URL: str = Field("redis://localhost:6379", env="REDIS_URL")
-
-    # RabbitMQ Configuration
-    RABBITMQ_URL: str = Field("amqp://guest:guest@localhost:5672/", env="RABBITMQ_URL")
-
-    # External Service URLs
-    USER_SERVICE_URL: str = Field("http://localhost:8001", env="USER_SERVICE_URL")
-    INVENTORY_SERVICE_URL: str = Field("http://localhost:8004", env="INVENTORY_SERVICE_URL")
-    ORDER_SERVICE_URL: str = Field("http://localhost:8003", env="ORDER_SERVICE_URL")
-    LOCATION_SERVICE_URL: str = Field("http://localhost:8005", env="LOCATION_SERVICE_URL")
-    WEBSOCKET_SERVICE_URL: str = Field("http://localhost:8012", env="WEBSOCKET_SERVICE_URL")
-
-    # Bidding Configuration
-    DEFAULT_AUCTION_DURATION_HOURS: int = Field(24, env="DEFAULT_AUCTION_DURATION_HOURS")
-    MIN_AUCTION_DURATION_HOURS: int = Field(1, env="MIN_AUCTION_DURATION_HOURS")
-    MAX_AUCTION_DURATION_HOURS: int = Field(168, env="MAX_AUCTION_DURATION_HOURS")  # 1 week
-    DEFAULT_QUOTE_EXPIRY_HOURS: int = Field(48, env="DEFAULT_QUOTE_EXPIRY_HOURS")
-    MIN_BID_INCREMENT: float = Field(0.01, env="MIN_BID_INCREMENT")
-    MAX_DELIVERY_DISTANCE_KM: float = Field(100.0, env="MAX_DELIVERY_DISTANCE_KM")
-
-    # Vendor Selection Algorithm Weights
-    PRICE_WEIGHT: float = Field(0.4, env="PRICE_WEIGHT")
-    RATING_WEIGHT: float = Field(0.3, env="RATING_WEIGHT")
-    DISTANCE_WEIGHT: float = Field(0.2, env="DISTANCE_WEIGHT")
-    DELIVERY_TIME_WEIGHT: float = Field(0.1, env="DELIVERY_TIME_WEIGHT")
-
-    # Performance Thresholds
-    MIN_VENDOR_RATING: float = Field(3.0, env="MIN_VENDOR_RATING")
-    MAX_DELIVERY_TIME_HOURS: int = Field(48, env="MAX_DELIVERY_TIME_HOURS")
-
-    # Notification Settings
-    ENABLE_REAL_TIME_NOTIFICATIONS: bool = Field(True, env="ENABLE_REAL_TIME_NOTIFICATIONS")
-    ENABLE_EMAIL_NOTIFICATIONS: bool = Field(True, env="ENABLE_EMAIL_NOTIFICATIONS")
-
-    # Security
-    SECRET_KEY: str = Field(..., env="SECRET_KEY")
-    ALGORITHM: str = Field("HS256", env="ALGORITHM")
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = Field(30, env="ACCESS_TOKEN_EXPIRE_MINUTES")
-
-    # Rate Limiting
-    RATE_LIMIT_PER_MINUTE: int = Field(60, env="RATE_LIMIT_PER_MINUTE")
-
-    # Logging
-    LOG_LEVEL: str = Field("INFO", env="LOG_LEVEL")
-
-    # CORS
-    ALLOWED_ORIGINS: List[str] = Field(["*"], env="ALLOWED_ORIGINS")
-
+    """Application settings with environment variable support."""
+    
+    # Basic service configuration
+    SERVICE_NAME: str = "pricing-service"
+    VERSION: str = "1.0.0"
+    DEBUG: bool = os.getenv("DEBUG", "false").lower() == "true"
+    PORT: int = int(os.getenv("PORT", "8006"))
+    
+    # Database configuration
+    DATABASE_URL: str = os.getenv(
+        "DATABASE_URL", 
+        "postgresql+asyncpg://user:password@localhost:5432/oxygen_platform"
+    )
+    
+    # Redis configuration
+    REDIS_URL: str = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+    
+    # Security configuration
+    SECRET_KEY: str = os.getenv("SECRET_KEY", "pricing-service-secret-key")
+    JWT_SECRET_KEY: str = os.getenv("JWT_SECRET_KEY", "jwt-secret-key")
+    ENCRYPTION_KEY: str = os.getenv("ENCRYPTION_KEY", "")
+    
+    # CORS configuration
+    ALLOWED_ORIGINS: List[str] = [
+        "http://localhost:3000",
+        "http://localhost:8000",
+        "http://127.0.0.1:3000",
+        "http://127.0.0.1:8000",
+    ]
+    
+    # External service URLs
+    USER_SERVICE_URL: str = os.getenv("USER_SERVICE_URL", "http://localhost:8001")
+    INVENTORY_SERVICE_URL: str = os.getenv("INVENTORY_SERVICE_URL", "http://localhost:8004")
+    LOCATION_SERVICE_URL: str = os.getenv("LOCATION_SERVICE_URL", "http://localhost:8003")
+    ORDER_SERVICE_URL: str = os.getenv("ORDER_SERVICE_URL", "http://localhost:8005")
+    NOTIFICATION_SERVICE_URL: str = os.getenv("NOTIFICATION_SERVICE_URL", "http://localhost:8010")
+    
+    # Message broker configuration
+    RABBITMQ_URL: str = os.getenv("RABBITMQ_URL", "amqp://guest:guest@localhost:5672/")
+    
+    # Pricing service specific configuration
+    DEFAULT_SEARCH_RADIUS_KM: float = float(os.getenv("DEFAULT_SEARCH_RADIUS_KM", "50.0"))
+    MAX_SEARCH_RADIUS_KM: float = float(os.getenv("MAX_SEARCH_RADIUS_KM", "200.0"))
+    PRICE_CACHE_TTL_SECONDS: int = int(os.getenv("PRICE_CACHE_TTL_SECONDS", "300"))  # 5 minutes
+    VENDOR_CACHE_TTL_SECONDS: int = int(os.getenv("VENDOR_CACHE_TTL_SECONDS", "1800"))  # 30 minutes
+    
+    # Pagination defaults
+    DEFAULT_PAGE_SIZE: int = int(os.getenv("DEFAULT_PAGE_SIZE", "20"))
+    MAX_PAGE_SIZE: int = int(os.getenv("MAX_PAGE_SIZE", "100"))
+    
+    # Rate limiting
+    RATE_LIMIT_REQUESTS_PER_MINUTE: int = int(os.getenv("RATE_LIMIT_REQUESTS_PER_MINUTE", "100"))
+    
+    # Logging configuration
+    LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO")
+    LOG_FORMAT: str = os.getenv(
+        "LOG_FORMAT", 
+        "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    )
+    
+    # Performance settings
+    DB_POOL_SIZE: int = int(os.getenv("DB_POOL_SIZE", "10"))
+    DB_MAX_OVERFLOW: int = int(os.getenv("DB_MAX_OVERFLOW", "20"))
+    DB_POOL_TIMEOUT: int = int(os.getenv("DB_POOL_TIMEOUT", "30"))
+    
+    # Feature flags
+    ENABLE_PRICE_ALERTS: bool = os.getenv("ENABLE_PRICE_ALERTS", "true").lower() == "true"
+    ENABLE_VENDOR_RECOMMENDATIONS: bool = os.getenv("ENABLE_VENDOR_RECOMMENDATIONS", "true").lower() == "true"
+    ENABLE_BULK_PRICING: bool = os.getenv("ENABLE_BULK_PRICING", "true").lower() == "true"
+    
     class Config:
         env_file = ".env"
         case_sensitive = True
 
 
-@lru_cache()
+# Global settings instance
+_settings = None
+
+
 def get_settings() -> Settings:
-    return Settings()
+    """Get application settings singleton."""
+    global _settings
+    if _settings is None:
+        _settings = Settings()
+    return _settings

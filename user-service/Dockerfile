@@ -12,14 +12,17 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements first for better caching
-COPY requirements.txt .
+COPY user-service/requirements.txt .
 
 # Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt && \
     pip install --no-cache-dir pyotp==2.8.0 qrcode[pil]==7.4.2
 
-# Copy application code
-COPY . .
+# Copy shared modules first
+COPY shared/ /app/shared/
+
+# Copy application code to user-service subdirectory
+COPY user-service/ /app/user-service/
 
 # Create non-root user
 RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app

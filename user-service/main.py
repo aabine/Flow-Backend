@@ -1,8 +1,9 @@
-from fastapi import FastAPI, HTTPException, Depends, status, Query, Request, UploadFile
+from fastapi import FastAPI, HTTPException, Depends, status, Query, Request, UploadFile, Header
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select, func
 from typing import Optional
 from pydantic import BaseModel
 from datetime import datetime, timedelta
@@ -56,6 +57,23 @@ app = FastAPI(
     version="1.0.0"
 )
 
+# Authentication dependency for admin endpoints
+async def get_current_admin_user(
+    x_user_id: str = Header(..., alias="X-User-ID"),
+    x_user_role: str = Header(..., alias="X-User-Role")
+) -> dict:
+    """Get current admin user from headers (set by API Gateway)."""
+    if UserRole(x_user_role) != UserRole.ADMIN:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin access required"
+        )
+
+    return {
+        "user_id": x_user_id,
+        "role": UserRole(x_user_role)
+    }
+
 # Add rate limiting middleware
 app.add_middleware(RateLimitMiddleware)
 
@@ -88,6 +106,75 @@ async def health_check():
         "status": "healthy",
         "timestamp": datetime.utcnow().isoformat()
     }
+
+
+@app.get("/admin/users")
+async def get_all_users_admin(
+    page: int = Query(1, ge=1),
+    size: int = Query(20, ge=1, le=100),
+    role: Optional[str] = Query(None),
+    is_active: Optional[bool] = Query(None),
+    current_user: dict = Depends(get_current_admin_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """Get all users for admin (admin only)."""
+    # Admin access already verified by get_current_admin_user dependency
+
+    try:
+        # Build query
+        query = select(User)
+
+        # Apply filters
+        if role:
+            query = query.filter(User.role == role)
+        if is_active is not None:
+            query = query.filter(User.is_active == is_active)
+
+        # Apply pagination
+        offset = (page - 1) * size
+        query = query.offset(offset).limit(size)
+
+        # Execute query
+        result = await db.execute(query)
+        users = result.scalars().all()
+
+        # Get total count
+        count_query = select(func.count(User.id))
+        if role:
+            count_query = count_query.filter(User.role == role)
+        if is_active is not None:
+            count_query = count_query.filter(User.is_active == is_active)
+
+        total_result = await db.execute(count_query)
+        total = total_result.scalar()
+
+        # Format response
+        user_list = []
+        for user in users:
+            user_list.append({
+                "id": str(user.id),
+                "email": user.email,
+                "full_name": user.full_name,
+                "role": user.role,
+                "is_active": user.is_active,
+                "email_verified": user.email_verified,
+                "created_at": user.created_at.isoformat() if user.created_at else None,
+                "last_login": user.last_login.isoformat() if user.last_login else None
+            })
+
+        return {
+            "items": user_list,
+            "total": total,
+            "page": page,
+            "size": size,
+            "pages": (total + size - 1) // size
+        }
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get users: {str(e)}"
+        )
 
 
 @app.post("/auth/register", response_model=APIResponse)

@@ -41,7 +41,14 @@ class Settings(BaseSettings):
     # Security
     SECRET_KEY: str = os.getenv("SECRET_KEY", "your-super-secret-admin-key-here")
     ALGORITHM: str = os.getenv("ALGORITHM", "HS256")
-    
+    REQUIRE_MFA: bool = os.getenv("REQUIRE_MFA", "false").lower() == "true"
+    ADMIN_IP_WHITELIST: str = os.getenv("ADMIN_IP_WHITELIST", "")
+    ENCRYPTION_KEY: str = os.getenv("ENCRYPTION_KEY", "")
+
+    # Database Security
+    DB_SSL_MODE: str = os.getenv("DB_SSL_MODE", "prefer")
+    DB_AUDIT_LOGGING: bool = os.getenv("DB_AUDIT_LOGGING", "false").lower() == "true"
+
     # Environment
     ENVIRONMENT: str = os.getenv("ENVIRONMENT", "development")
     DEBUG: bool = os.getenv("DEBUG", "true").lower() == "true"

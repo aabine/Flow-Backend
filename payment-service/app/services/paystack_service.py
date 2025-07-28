@@ -28,14 +28,14 @@ class PaystackService:
     async def initialize_transaction(self, email: str, amount: int, reference: str, callback_url: Optional[str] = None) -> Dict[str, Any]:
         """Initialize a transaction with Paystack."""
         url = f"{self.base_url}/transaction/initialize"
-        
+
         data = {
             "email": email,
             "amount": amount,  # Amount in kobo
             "reference": reference,
             "currency": "NGN"
         }
-        
+
         if callback_url:
             data["callback_url"] = callback_url
 
@@ -43,13 +43,34 @@ class PaystackService:
             response = await client.post(url, json=data, headers=self._get_headers())
             return response.json()
 
+    async def initialize_payment(self, email: str, amount: float, reference: str, callback_url: Optional[str] = None) -> Dict[str, Any]:
+        """Initialize a payment with Paystack (wrapper for initialize_transaction)."""
+        # Convert amount from Naira to kobo (multiply by 100)
+        amount_in_kobo = int(amount * 100)
+
+        result = await self.initialize_transaction(email, amount_in_kobo, reference, callback_url)
+
+        # Return the data in the expected format
+        if result.get("status") and result.get("data"):
+            return {
+                "authorization_url": result["data"]["authorization_url"],
+                "access_code": result["data"]["access_code"],
+                "reference": result["data"]["reference"]
+            }
+        else:
+            raise Exception(f"Paystack initialization failed: {result.get('message', 'Unknown error')}")
+
     async def verify_transaction(self, reference: str) -> Dict[str, Any]:
         """Verify a transaction with Paystack."""
         url = f"{self.base_url}/transaction/verify/{reference}"
-        
+
         async with httpx.AsyncClient() as client:
             response = await client.get(url, headers=self._get_headers())
             return response.json()
+
+    async def verify_payment(self, reference: str) -> Dict[str, Any]:
+        """Verify a payment with Paystack (wrapper for verify_transaction)."""
+        return await self.verify_transaction(reference)
 
     async def create_split(self, name: str, type: str, currency: str, subaccounts: list) -> Dict[str, Any]:
         """Create a transaction split."""

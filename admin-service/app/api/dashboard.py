@@ -15,26 +15,56 @@ from app.schemas.admin import (
     ReviewAnalytics, SystemAnalytics, SystemHealthResponse
 )
 from shared.models import APIResponse, UserRole
+from shared.security.auth import get_current_admin_user
 
 router = APIRouter()
 analytics_service = AnalyticsService()
 monitoring_service = SystemMonitoringService()
 
 
-async def get_current_admin_user(
-    x_user_id: str = Header(..., alias="X-User-ID"),
-    x_user_role: str = Header(..., alias="X-User-Role")
-) -> dict:
-    """Get current admin user from headers (set by API Gateway)."""
-    if UserRole(x_user_role) != UserRole.ADMIN:
+# Using shared authentication function from shared.security.auth
+
+
+@router.get("/")
+async def get_admin_dashboard(
+    current_admin: dict = Depends(get_current_admin_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """Get admin dashboard overview."""
+    try:
+        # Get all dashboard metrics
+        dashboard_data = {
+            "overview": {
+                "message": "Admin Dashboard - Main overview endpoint",
+                "status": "operational",
+                "timestamp": "2025-07-27T12:00:00Z"
+            },
+            "quick_stats": {
+                "total_users": "Available via /kpis endpoint",
+                "total_orders": "Available via /kpis endpoint",
+                "total_revenue": "Available via /kpis endpoint",
+                "system_health": "Available via /system-health endpoint"
+            },
+            "available_endpoints": {
+                "kpis": "/admin/dashboard/kpis",
+                "system_health": "/admin/dashboard/system-health",
+                "orders": "/admin/dashboard/orders",
+                "users": "/admin/dashboard/users",
+                "revenue": "/admin/dashboard/revenue"
+            }
+        }
+
+        return {
+            "success": True,
+            "message": "Dashboard data retrieved successfully",
+            "data": dashboard_data
+        }
+
+    except Exception as e:
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Admin access required"
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get dashboard data: {str(e)}"
         )
-    return {
-        "user_id": x_user_id,
-        "role": UserRole(x_user_role)
-    }
 
 
 @router.get("/kpis", response_model=DashboardKPI)

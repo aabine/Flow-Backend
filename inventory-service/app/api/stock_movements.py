@@ -15,20 +15,13 @@ from app.schemas.inventory import (
     PaginatedStockMovementResponse
 )
 from shared.models import APIResponse, UserRole
+from shared.security.auth import get_current_user
 
 router = APIRouter()
 inventory_service = InventoryService()
 
 
-async def get_current_user(
-    x_user_id: str = Header(..., alias="X-User-ID"),
-    x_user_role: str = Header(..., alias="X-User-Role")
-) -> dict:
-    """Get current user from headers (set by API Gateway)."""
-    return {
-        "user_id": x_user_id,
-        "role": UserRole(x_user_role)
-    }
+# Using shared authentication function from shared.security.auth
 
 
 @router.post("/", response_model=APIResponse)
