@@ -1,3 +1,4 @@
+# Use Python 3.11 slim image
 FROM python:3.11-slim
 
 # Set working directory
@@ -6,27 +7,32 @@ WORKDIR /app
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
     gcc \
+    g++ \
+    libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy shared directory first for better caching
-COPY shared/ /app/shared/
+# Copy shared directory
+COPY ./shared/ /app/shared/
 
-# Copy pricing service requirements and install dependencies
-COPY pricing-service/requirements.txt /app/pricing-service/
-RUN pip install --no-cache-dir -r pricing-service/requirements.txt
+# Copy requirements first for better caching
+COPY ./pricing-service/requirements.txt .
 
-# Copy pricing service code
-COPY pricing-service/ /app/pricing-service/
+# Install Python dependencies
+RUN pip install --no-cache-dir -r requirements.txt
 
-# Set working directory to pricing service
-WORKDIR /app/pricing-service
+# Copy application code
+COPY ./pricing-service/ /app/pricing-service/
 
-# Expose port
+# Create non-root user
+RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
+USER appuser
+
+# Expose port (will be overridden in specific services)
 EXPOSE 8006
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
-    CMD python -c "import requests; requests.get('http://localhost:8006/health')" || exit 1
+    CMD curl -f http://localhost:8006/health || exit 1
 
 # Run the application
-CMD ["python", "main.py"]
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8006"]

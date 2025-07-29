@@ -6,21 +6,22 @@ WORKDIR /app
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
-    curl \
     gcc \
     g++ \
     libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements first for better caching
-COPY requirements.txt .
+COPY ./order-service/requirements.txt .
 
 # Install Python dependencies
-RUN pip install --no-cache-dir -r requirements.txt && \
-    pip install --no-cache-dir aio-pika==9.3.1
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy shared directory
+COPY ./shared/ /app/shared/
 
 # Copy application code
-COPY . .
+COPY ./order-service/ /app/order-service/
 
 # Create non-root user
 RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app

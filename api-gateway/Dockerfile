@@ -12,16 +12,16 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements first for better caching
-COPY api-gateway/requirements.txt .
+COPY ./api-gateway/requirements.txt .
 
 # Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy shared modules first
-COPY shared/ /app/shared/
+# Copy shared directory
+COPY ./shared/ /app/shared/
 
-# Copy application code to api-gateway subdirectory
-COPY api-gateway/ /app/api-gateway/
+# Copy application code
+COPY ./api-gateway/ /app/api-gateway/
 
 # Create non-root user
 RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
