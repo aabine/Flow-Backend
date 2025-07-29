@@ -4,16 +4,24 @@ services:
   # Databases
   postgres:
     image: postgres:15
+    container_name: flow-backend_postgres
     environment:
       POSTGRES_DB: oxygen_platform
       POSTGRES_USER: user
       POSTGRES_PASSWORD: password
       POSTGRES_INITDB_ARGS: "--auth-host=md5"
       POSTGRES_HOST_AUTH_METHOD: md5
+      # Improve PostgreSQL performance and stability
+      POSTGRES_SHARED_PRELOAD_LIBRARIES: pg_stat_statements
+      POSTGRES_MAX_CONNECTIONS: 200
+      POSTGRES_SHARED_BUFFERS: 256MB
+      POSTGRES_EFFECTIVE_CACHE_SIZE: 1GB
+      POSTGRES_MAINTENANCE_WORK_MEM: 64MB
     ports:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      - ./postgres-init:/docker-entrypoint-initdb.d:ro
     networks:
       - oxygen-network
     healthcheck:
@@ -22,6 +30,7 @@ services:
       timeout: 5s
       retries: 5
       start_period: 30s
+    restart: unless-stopped
     command: >
       postgres
       -c shared_preload_libraries=pg_stat_statements
@@ -37,9 +46,18 @@ services:
       -c work_mem=4MB
       -c min_wal_size=1GB
       -c max_wal_size=4GB
+      -c log_connections=on
+      -c log_disconnections=on
+      -c log_statement=all
+      -c logging_collector=on
+      -c log_destination=stderr
+      -c log_line_prefix='%t [%p]: [%l-1] user=%u,db=%d,app=%a,client=%h '
+      -c checkpoint_timeout=15min
+      -c checkpoint_warning=30s
 
   redis:
     image: redis:7-alpine
+    container_name: flow-backend_redis
     ports:
       - "6380:6379"
     volumes:
@@ -49,6 +67,7 @@ services:
 
   mongodb:
     image: mongo:6
+    container_name: flow-backend_mongodb
     ports:
       - "27017:27017"
     volumes:
@@ -58,6 +77,7 @@ services:
 
   rabbitmq:
     image: rabbitmq:3-management
+    container_name: flow-backend_rabbitmq
     ports:
       - "5672:5672"
       - "15672:15672"
@@ -75,6 +95,7 @@ services:
       context: .
       dockerfile: ./api-gateway/Dockerfile
     working_dir: /app/api-gateway
+    container_name: flow-backend_api-gateway
     ports:
       - "8000:8000"
     environment:
@@ -113,6 +134,7 @@ services:
       context: .
       dockerfile: ./user-service/Dockerfile
     working_dir: /app/user-service
+    container_name: flow-backend_user-service
     ports:
       - "8001:8001"
     environment:
@@ -138,6 +160,7 @@ services:
       context: .
       dockerfile: ./order-service/Dockerfile
     working_dir: /app/order-service
+    container_name: flow-backend_order-service
     ports:
       - "8005:8005"
     environment:
@@ -166,6 +189,7 @@ services:
       context: .
       dockerfile: ./inventory-service/Dockerfile
     working_dir: /app/inventory-service
+    container_name: flow-backend_inventory-service
     ports:
       - "8004:8004"
     environment:
@@ -191,6 +215,7 @@ services:
       context: .
       dockerfile: ./payment-service/Dockerfile
     working_dir: /app
+    container_name: flow-backend_payment-service
     ports:
       - "8008:8008"
     environment:
@@ -215,6 +240,7 @@ services:
       context: .
       dockerfile: ./location-service/Dockerfile
     working_dir: /app/location-service
+    container_name: flow-backend_location-service
     ports:
       - "8003:8003"
     environment:
@@ -234,6 +260,7 @@ services:
       context: .
       dockerfile: ./notification-service/Dockerfile
     working_dir: /app/notification-service
+    container_name: flow-backend_notification-service
     ports:
       - "8010:8010"
     environment:
@@ -265,6 +292,7 @@ services:
       context: .
       dockerfile: ./websocket-service/Dockerfile
     working_dir: /app/websocket-service
+    container_name: flow-backend_websocket-service
     ports:
       - "8012:8012"
     environment:
@@ -285,6 +313,7 @@ services:
       context: .
       dockerfile: ./supplier-onboarding-service/Dockerfile
     working_dir: /app/supplier-onboarding-service
+    container_name: flow-backend_supplier-onboarding-service
     ports:
       - "8002:8002"
     environment:
@@ -335,6 +364,7 @@ services:
       context: .
       dockerfile: ./review-service/Dockerfile
     working_dir: /app/review-service
+    container_name: flow-backend_review-service
     ports:
       - "8009:8009"
     environment:
@@ -359,6 +389,7 @@ services:
       context: .
       dockerfile: ./admin-service/Dockerfile
     working_dir: /app/admin-service
+    container_name: flow-backend_admin-service
     ports:
       - "8011:8011"
     environment:

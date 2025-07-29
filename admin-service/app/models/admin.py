@@ -44,7 +44,7 @@ class AdminUser(Base):
     user_id = Column(UUID(as_uuid=True), nullable=False, unique=True, index=True)  # Reference to main users table
     
     # Admin specific fields
-    admin_level = Column(String, default="admin")  # admin, super_admin, moderator
+    admin_level = Column(String, default="admin")  # admin
     permissions = Column(JSON, default=list)  # List of specific permissions
     
     # Access control

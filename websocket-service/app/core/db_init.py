@@ -142,18 +142,18 @@ async def verify_redis_connection():
         logger.error(f"❌ Redis connection failed: {e}")
         return False
 
-async def setup_websocket_infrastructure():
+async def setup_websocket_infrastructure(engine):
     """Setup infrastructure for WebSocket service"""
     try:
         # Verify Redis connection
         redis_ok = await verify_redis_connection()
         if not redis_ok:
             logger.warning("⚠️ Redis connection failed - WebSocket service may not function properly")
-        
+
         # Log service readiness
         logger.info("✅ WebSocket service infrastructure setup completed")
         return True
-        
+
     except Exception as e:
         logger.error(f"❌ Failed to setup WebSocket infrastructure: {e}")
         return False

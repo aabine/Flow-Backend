@@ -21,6 +21,12 @@ COPY ./shared/ /app/shared/
 # Copy application code
 COPY ./supplier-onboarding-service/ /app/supplier-onboarding-service/
 
+# Set working directory to supplier-onboarding-service
+WORKDIR /app/supplier-onboarding-service
+
+# Ensure /app is in PYTHONPATH so 'shared' can be imported
+ENV PYTHONPATH=/app
+
 # Create non-root user
 RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
 USER appuser

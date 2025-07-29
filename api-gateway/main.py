@@ -16,17 +16,17 @@ import secrets
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Add shared directory to path for security modules
-sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'shared'))
+# Add parent directory to path for shared imports
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 try:
-    from security.auth import JWTManager, SecurityConfig
-    from security.middleware import (
+    from shared.security.auth import JWTManager, SecurityConfig
+    from shared.security.middleware import (
         RateLimitMiddleware, SecurityHeadersMiddleware,
         InputValidationMiddleware, IPWhitelistMiddleware
     )
-    from security.encryption import data_masking
-    from models import UserRole
+    from shared.security.encryption import data_masking
+    from shared.models import UserRole
 
     # Initialize JWT manager
     jwt_manager = JWTManager()
