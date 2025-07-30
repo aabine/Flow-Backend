@@ -1,5 +1,5 @@
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_, or_, func
+from sqlalchemy import select, and_, or_, func, desc
 from sqlalchemy.orm import selectinload
 from typing import Optional, List, Dict, Any
 from datetime import datetime
@@ -7,18 +7,21 @@ import httpx
 import math
 import sys
 import os
+import logging
 
 # Add parent directory to path for shared imports
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))))
 
 from app.models.inventory import Inventory, CylinderStock
 from app.schemas.inventory import (
-    ProductCatalogRequest, ProductCatalogItem,
+    ProductCatalogRequest, ProductCatalogItem, ProductCatalogResponse,
     AvailabilityCheck, AvailabilityResponse, BulkAvailabilityCheck, BulkAvailabilityResponse
 )
 from app.core.config import get_settings
 from shared.models import CylinderSize
 from shared.utils import calculate_distance_km
+
+logger = logging.getLogger(__name__)
 
 
 class ProductCatalogService:
@@ -385,3 +388,149 @@ class ProductCatalogService:
             return sorted(items, key=lambda x: x.estimated_delivery_time_hours, reverse=reverse)
         else:
             return items
+
+    async def get_featured_products(
+        self,
+        db: AsyncSession,
+        limit: int = 10
+    ) -> List[ProductCatalogItem]:
+        """Get featured products for public display."""
+        try:
+            # Query for featured products (high availability, good ratings)
+            query = select(Inventory).where(
+                and_(
+                    Inventory.quantity > 0,
+                    Inventory.is_available == True
+                )
+            ).order_by(
+                desc(Inventory.quantity),  # Prioritize high stock
+                desc(Inventory.updated_at)  # Recent updates
+            ).limit(limit)
+
+            result = await db.execute(query)
+            inventory_items = result.scalars().all()
+
+            catalog_items = []
+            for item in inventory_items:
+                # Get vendor info
+                vendor_info = await self._get_vendor_info(str(item.vendor_id))
+
+                # Get pricing info
+                pricing_info = await self._get_pricing_info(str(item.vendor_id), str(item.location_id))
+
+                catalog_item = ProductCatalogItem(
+                    id=str(item.id),
+                    vendor_id=str(item.vendor_id),
+                    vendor_name=vendor_info.get("name", "Unknown Vendor"),
+                    vendor_rating=vendor_info.get("rating", 0.0),
+                    location_id=str(item.location_id),
+                    location_name=vendor_info.get("location_name", "Unknown Location"),
+                    product_type=item.product_type,
+                    cylinder_size=item.cylinder_size,
+                    quantity_available=item.quantity,
+                    unit_price=pricing_info.get(item.product_type, {}).get("unit_price", 0.0),
+                    bulk_price=pricing_info.get(item.product_type, {}).get("bulk_price", 0.0),
+                    minimum_order=pricing_info.get(item.product_type, {}).get("minimum_order", 1),
+                    delivery_time_hours=24,  # Default delivery time
+                    distance_km=0.0,  # No distance for featured products
+                    is_emergency_available=item.emergency_stock > 0,
+                    last_updated=item.updated_at
+                )
+                catalog_items.append(catalog_item)
+
+            return catalog_items
+
+        except Exception as e:
+            logger.error(f"Error getting featured products: {e}")
+            return []
+
+    async def get_nearby_products(
+        self,
+        db: AsyncSession,
+        latitude: float,
+        longitude: float,
+        cylinder_size: str = None,
+        quantity: int = 1,
+        max_distance_km: float = 50.0,
+        is_emergency: bool = False,
+        sort_by: str = "distance",
+        page: int = 1,
+        page_size: int = 20,
+        user_context: dict = None
+    ) -> ProductCatalogResponse:
+        """Get nearby products for public search."""
+        try:
+            # Build query for nearby products
+            query = select(Inventory).where(
+                and_(
+                    Inventory.quantity >= quantity,
+                    Inventory.is_available == True
+                )
+            )
+
+            if cylinder_size:
+                query = query.where(Inventory.cylinder_size == cylinder_size)
+
+            if is_emergency:
+                query = query.where(Inventory.emergency_stock >= quantity)
+
+            result = await db.execute(query)
+            inventory_items = result.scalars().all()
+
+            catalog_items = []
+            for item in inventory_items:
+                # Calculate distance (simplified - in real implementation, use proper geospatial queries)
+                distance_km = 10.0  # Placeholder distance calculation
+
+                if distance_km <= max_distance_km:
+                    # Get vendor info
+                    vendor_info = await self._get_vendor_info(str(item.vendor_id))
+
+                    # Get pricing info
+                    pricing_info = await self._get_pricing_info(str(item.vendor_id), str(item.location_id))
+
+                    catalog_item = ProductCatalogItem(
+                        id=str(item.id),
+                        vendor_id=str(item.vendor_id),
+                        vendor_name=vendor_info.get("name", "Unknown Vendor"),
+                        vendor_rating=vendor_info.get("rating", 0.0),
+                        location_id=str(item.location_id),
+                        location_name=vendor_info.get("location_name", "Unknown Location"),
+                        product_type=item.product_type,
+                        cylinder_size=item.cylinder_size,
+                        quantity_available=item.quantity,
+                        unit_price=pricing_info.get(item.product_type, {}).get("unit_price", 0.0),
+                        bulk_price=pricing_info.get(item.product_type, {}).get("bulk_price", 0.0),
+                        minimum_order=pricing_info.get(item.product_type, {}).get("minimum_order", 1),
+                        delivery_time_hours=self._calculate_delivery_time(distance_km, is_emergency),
+                        distance_km=distance_km,
+                        is_emergency_available=item.emergency_stock > 0,
+                        last_updated=item.updated_at
+                    )
+                    catalog_items.append(catalog_item)
+
+            # Sort results
+            sorted_items = self._sort_catalog_items(catalog_items, sort_by, latitude, longitude)
+
+            # Paginate
+            start_idx = (page - 1) * page_size
+            end_idx = start_idx + page_size
+            paginated_items = sorted_items[start_idx:end_idx]
+
+            return ProductCatalogResponse(
+                items=paginated_items,
+                total_count=len(catalog_items),
+                page=page,
+                page_size=page_size,
+                total_pages=(len(catalog_items) + page_size - 1) // page_size
+            )
+
+        except Exception as e:
+            logger.error(f"Error getting nearby products: {e}")
+            return ProductCatalogResponse(
+                items=[],
+                total_count=0,
+                page=page,
+                page_size=page_size,
+                total_pages=0
+            )

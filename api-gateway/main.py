@@ -711,6 +711,21 @@ async def login(request: Request):
     return response
 
 
+# Development-only routes (no auth required)
+@app.post("/dev/create-verified-user")
+async def dev_create_verified_user(request: Request):
+    """Development-only endpoint to create pre-verified users."""
+    response = await proxy_request("user", "/dev/create-verified-user", request, None)
+    return response
+
+
+@app.post("/dev/verify-user-email")
+async def dev_verify_user_email(request: Request):
+    """Development-only endpoint to verify user email."""
+    response = await proxy_request("user", "/dev/verify-user-email", request, None)
+    return response
+
+
 @app.post("/auth/refresh")
 async def refresh_token(request: Request):
     """Refresh access token."""
@@ -723,6 +738,21 @@ async def refresh_token(request: Request):
 async def user_service(path: str, request: Request, user_data: dict = Depends(verify_token)):
     """Proxy to User Service."""
     response = await proxy_request("user", f"/{path}", request, user_data)
+    return response
+
+
+# Profile management routes (auth required)
+@app.post("/hospital-profiles")
+async def create_hospital_profile(request: Request, user_data: dict = Depends(verify_token)):
+    """Create hospital profile."""
+    response = await proxy_request("user", "/hospital-profiles", request, user_data)
+    return response
+
+
+@app.post("/vendor-profiles")
+async def create_vendor_profile(request: Request, user_data: dict = Depends(verify_token)):
+    """Create vendor profile."""
+    response = await proxy_request("user", "/vendor-profiles", request, user_data)
     return response
 
 

@@ -48,8 +48,8 @@ async def get_public_nearby_vendors(
             page_size=page_size
         )
 
-        vendor_service = VendorService()
-        vendors = await vendor_service.search_nearby_vendors(db, search_request)
+        vendor_service = VendorService(db)
+        vendors = await vendor_service.search_nearby_vendors(search_request)
 
         return vendors
     except HTTPException:
