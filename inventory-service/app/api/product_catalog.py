@@ -68,6 +68,8 @@ async def get_nearby_products(
     max_distance_km: float = Query(50.0, gt=0),
     is_emergency: bool = Query(False),
     sort_by: str = Query("distance", pattern="^(distance|price|rating|delivery_time)$"),
+    page: int = Query(1, ge=1, description="Page number (1-based)"),
+    page_size: int = Query(20, ge=1, le=100, description="Items per page (max 100)"),
     current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
@@ -86,14 +88,19 @@ async def get_nearby_products(
             sort_by=sort_by
         )
 
-        catalog_items = await catalog_service.search_catalog(
+        catalog_items, total_items = await catalog_service.search_catalog(
             db=db,
-            request=catalog_request
+            request=catalog_request,
+            page=page,
+            page_size=page_size
         )
 
         return ProductCatalogResponse(
             items=catalog_items,
-            total=len(catalog_items),
+            total=total_items,
+            page=page,
+            page_size=page_size,
+            total_pages=(total_items + page_size - 1) // page_size,
             search_radius_km=max_distance_km,
             hospital_location={"latitude": latitude, "longitude": longitude},
             filters_applied=catalog_request
@@ -260,4 +267,64 @@ async def get_emergency_products(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to get emergency products: {str(e)}"
+        )
+
+
+# Public endpoints for basic catalog browsing (no authentication required)
+@router.get("/public/featured", response_model=List[ProductCatalogItem])
+async def get_public_featured_products(
+    limit: int = Query(10, ge=1, le=50),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Get featured products for public browsing (no authentication required).
+    This allows potential users to see available products before registration.
+    """
+    try:
+        products = await ProductCatalogService().get_featured_products(
+            db=db,
+            limit=limit
+        )
+        return products
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get featured products: {str(e)}"
+        )
+
+
+@router.get("/public/search", response_model=ProductCatalogResponse)
+async def public_product_search(
+    latitude: float = Query(..., ge=-90, le=90),
+    longitude: float = Query(..., ge=-180, le=180),
+    cylinder_size: Optional[str] = Query(None),
+    quantity: int = Query(1, gt=0),
+    max_distance_km: float = Query(50.0, gt=0),
+    page: int = Query(1, ge=1, description="Page number (1-based)"),
+    page_size: int = Query(20, ge=1, le=100, description="Items per page (max 100)"),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Public product search for basic catalog browsing (no authentication required).
+    This allows potential users to search products before registration.
+    """
+    try:
+        products = await ProductCatalogService().get_nearby_products(
+            db=db,
+            latitude=latitude,
+            longitude=longitude,
+            cylinder_size=cylinder_size,
+            quantity=quantity,
+            max_distance_km=max_distance_km,
+            is_emergency=False,
+            sort_by="distance",
+            page=page,
+            page_size=page_size,
+            user_context=None  # No user context for public access
+        )
+        return products
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to search products: {str(e)}"
         )

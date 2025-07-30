@@ -7,6 +7,8 @@ import uuid
 import httpx
 import sys
 import os
+import logging
+import secrets
 
 # Add parent directory to path for shared imports
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))))
@@ -14,11 +16,41 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(
 from app.models.order import Order, OrderItem, OrderStatusHistory
 from app.schemas.order import OrderCreate, OrderUpdate, DirectOrderCreate, VendorSelectionResult, DirectOrderResponse, OrderPricingRequest, OrderPricingResponse
 from app.core.config import get_settings
+from app.core.service_auth import service_client
 from shared.models import OrderStatus, UserRole, CylinderSize
 from shared.utils import generate_order_reference, calculate_distance_km, calculate_delivery_eta
 
+# Configure logging
+logger = logging.getLogger(__name__)
+
 
 class OrderService:
+    """Order service with structured logging and correlation ID support."""
+
+    def _get_correlation_id(self, user_context: Optional[dict] = None) -> str:
+        """Generate or extract correlation ID for request tracing."""
+        if user_context and user_context.get("correlation_id"):
+            return user_context["correlation_id"]
+        return secrets.token_urlsafe(16)
+
+    def _log_with_context(self, level: str, message: str, user_context: Optional[dict] = None, **kwargs):
+        """Log with structured context and correlation ID."""
+        correlation_id = self._get_correlation_id(user_context)
+
+        extra_context = {
+            "correlation_id": correlation_id,
+            "service": "order-service",
+            **kwargs
+        }
+
+        if user_context:
+            extra_context.update({
+                "user_id": user_context.get("user_id"),
+                "user_role": str(user_context.get("role", "")).replace("UserRole.", "")
+            })
+
+        log_method = getattr(logger, level.lower())
+        log_method(message, extra=extra_context)
     async def create_order(self, db: AsyncSession, hospital_id: str, order_data: OrderCreate) -> Order:
         """Create a new order."""
         # Generate order reference
@@ -291,29 +323,48 @@ class OrderService:
             ]
         }
     
-    async def _try_assign_vendor(self, db: AsyncSession, order_id: uuid.UUID, vendor_id: str) -> bool:
+    async def _try_assign_vendor(self, db: AsyncSession, order_id: uuid.UUID, vendor_id: str, user_context: Optional[dict] = None) -> bool:
         """Try to assign vendor to order."""
         try:
-            # Check if vendor is available (call inventory service)
-            async with httpx.AsyncClient() as client:
-                response = await client.get(
-                    f"{get_settings().INVENTORY_SERVICE_URL}/vendors/{vendor_id}/availability"
-                )
-                if response.status_code == 200:
-                    stmt = update(Order).where(Order.id == order_id).values(vendor_id=uuid.UUID(vendor_id))
-                    await db.execute(stmt)
-                    await db.commit()
-                    return True
-        except Exception:
-            pass
-        
+            # Check if vendor is available using service client
+            availability_data = await service_client.get_inventory_availability(
+                vendor_id=vendor_id,
+                user_context=user_context
+            )
+
+            if availability_data and availability_data.get("available", False):
+                stmt = update(Order).where(Order.id == order_id).values(vendor_id=uuid.UUID(vendor_id))
+                await db.execute(stmt)
+                await db.commit()
+                return True
+        except Exception as e:
+            self._log_with_context(
+                "error",
+                f"Error checking vendor availability for vendor {vendor_id}",
+                user_context,
+                vendor_id=vendor_id,
+                order_id=str(order_id),
+                error=str(e)
+            )
+
         return False
 
-    async def create_direct_order(self, db: AsyncSession, hospital_id: str, order_data: DirectOrderCreate) -> DirectOrderResponse:
+    async def create_direct_order(self, db: AsyncSession, hospital_id: str, order_data: DirectOrderCreate, user_context: Optional[dict] = None) -> DirectOrderResponse:
         """Create a direct order with automatic vendor selection."""
+        correlation_id = self._get_correlation_id(user_context)
+
+        self._log_with_context(
+            "info",
+            "Starting direct order creation",
+            user_context,
+            hospital_id=hospital_id,
+            item_count=len(order_data.items),
+            is_emergency=order_data.is_emergency
+        )
+
         try:
             # Find best vendor for this order
-            vendor_selection = await self._select_best_vendor(order_data)
+            vendor_selection = await self._select_best_vendor(order_data, user_context)
 
             if not vendor_selection:
                 raise ValueError("No suitable vendor found for this order")
@@ -350,7 +401,18 @@ class OrderService:
             await db.refresh(order)
 
             # Reserve stock
-            await self._reserve_stock(order, vendor_selection.location_id)
+            await self._reserve_stock(order, vendor_selection.location_id, user_context)
+
+            self._log_with_context(
+                "info",
+                "Direct order created successfully",
+                user_context,
+                order_id=str(order.id),
+                order_reference=order.reference,
+                vendor_id=str(vendor_selection.vendor_id),
+                total_amount=pricing_breakdown["total"],
+                estimated_delivery_hours=vendor_selection.estimated_delivery_time_hours
+            )
 
             return DirectOrderResponse(
                 order=order,
@@ -363,11 +425,11 @@ class OrderService:
             await db.rollback()
             raise Exception(f"Failed to create direct order: {str(e)}")
 
-    async def get_order_pricing(self, pricing_request: OrderPricingRequest) -> OrderPricingResponse:
+    async def get_order_pricing(self, pricing_request: OrderPricingRequest, user_context: Optional[dict] = None) -> OrderPricingResponse:
         """Get pricing options for an order without creating it."""
         try:
             # Get vendor options
-            vendor_options = await self._get_vendor_options(pricing_request)
+            vendor_options = await self._get_vendor_options(pricing_request, user_context)
 
             if not vendor_options:
                 raise ValueError("No vendors available for this order")
@@ -387,30 +449,26 @@ class OrderService:
         except Exception as e:
             raise Exception(f"Failed to get order pricing: {str(e)}")
 
-    async def _select_best_vendor(self, order_data: DirectOrderCreate) -> Optional[VendorSelectionResult]:
+    async def _select_best_vendor(self, order_data: DirectOrderCreate, user_context: Optional[dict] = None) -> Optional[VendorSelectionResult]:
         """Select the best vendor based on criteria."""
         try:
-            # Get available vendors from inventory service
-            async with httpx.AsyncClient() as client:
-                response = await client.get(
-                    f"{get_settings().INVENTORY_SERVICE_URL}/catalog/nearby",
-                    params={
-                        "latitude": order_data.delivery_latitude,
-                        "longitude": order_data.delivery_longitude,
-                        "max_distance_km": order_data.max_distance_km,
-                        "is_emergency": order_data.is_emergency,
-                        "sort_by": self._get_sort_criteria(order_data.vendor_selection_criteria)
-                    }
-                )
+            # Get available vendors from inventory service using service client
+            catalog_data = await service_client.search_nearby_catalog(
+                latitude=order_data.delivery_latitude,
+                longitude=order_data.delivery_longitude,
+                max_distance_km=order_data.max_distance_km,
+                is_emergency=order_data.is_emergency,
+                sort_by=self._get_sort_criteria(order_data.vendor_selection_criteria),
+                user_context=user_context
+            )
 
-                if response.status_code != 200:
-                    return None
+            if not catalog_data:
+                return None
 
-                catalog_data = response.json()
-                vendors = catalog_data.get("items", [])
+            vendors = catalog_data.get("items", [])
 
-                if not vendors:
-                    return None
+            if not vendors:
+                return None
 
                 # Group by vendor and select best option
                 vendor_groups = {}
@@ -565,30 +623,41 @@ class OrderService:
 
         return await self._calculate_order_pricing(order_data, vendor_id)
 
-    async def _reserve_stock(self, order: Order, location_id: str):
+    async def _reserve_stock(self, order: Order, location_id: str, user_context: Optional[dict] = None):
         """Reserve stock for the order."""
         try:
-            async with httpx.AsyncClient() as client:
-                for item in order.items:
-                    response = await client.post(
-                        f"{get_settings().INVENTORY_SERVICE_URL}/inventory/{location_id}/reserve",
-                        json={
-                            "cylinder_size": item.cylinder_size,
-                            "quantity": item.quantity,
-                            "order_id": str(order.id)
-                        }
-                    )
+            for item in order.items:
+                # Use service client to create stock reservation
+                reservation_data = await service_client.create_stock_reservation(
+                    cylinder_size=item.cylinder_size.value if hasattr(item.cylinder_size, 'value') else str(item.cylinder_size),
+                    quantity=item.quantity,
+                    order_id=str(order.id),
+                    user_context=user_context
+                )
 
-                    if response.status_code != 200:
-                        # If reservation fails, we should handle this gracefully
-                        # For now, we'll log it but not fail the order
-                        pass
+                if not reservation_data:
+                    # If reservation fails, we should handle this gracefully
+                    # For now, we'll log it but not fail the order
+                    self._log_with_context(
+                        "warning",
+                        f"Failed to reserve stock for order item",
+                        user_context,
+                        order_id=str(order.id),
+                        cylinder_size=str(item.cylinder_size),
+                        quantity=item.quantity
+                    )
 
         except Exception as e:
             # Log the error but don't fail the order
-            pass
+            self._log_with_context(
+                "error",
+                f"Error reserving stock for order",
+                user_context,
+                order_id=str(order.id),
+                error=str(e)
+            )
 
-    async def _get_vendor_options(self, pricing_request: OrderPricingRequest) -> List[VendorSelectionResult]:
+    async def _get_vendor_options(self, pricing_request: OrderPricingRequest, user_context: Optional[dict] = None) -> List[VendorSelectionResult]:
         """Get all available vendor options for a pricing request."""
         try:
             # Convert to direct order format for reuse
@@ -602,55 +671,51 @@ class OrderService:
                 vendor_selection_criteria="best_price"
             )
 
-            # Get all available vendors
-            async with httpx.AsyncClient() as client:
-                response = await client.get(
-                    f"{get_settings().INVENTORY_SERVICE_URL}/catalog/nearby",
-                    params={
-                        "latitude": pricing_request.delivery_latitude,
-                        "longitude": pricing_request.delivery_longitude,
-                        "max_distance_km": pricing_request.max_distance_km,
-                        "is_emergency": pricing_request.is_emergency
-                    }
-                )
+            # Get all available vendors using service client
+            catalog_data = await service_client.search_nearby_catalog(
+                latitude=pricing_request.delivery_latitude,
+                longitude=pricing_request.delivery_longitude,
+                max_distance_km=pricing_request.max_distance_km,
+                is_emergency=pricing_request.is_emergency,
+                user_context=user_context
+            )
 
-                if response.status_code != 200:
-                    return []
+            if not catalog_data:
+                return []
 
-                catalog_data = response.json()
-                vendors = catalog_data.get("items", [])
+            vendors = catalog_data.get("items", [])
 
-                # Group by vendor and calculate pricing
-                vendor_groups = {}
-                for item in vendors:
-                    vendor_id = item["vendor_id"]
-                    if vendor_id not in vendor_groups:
-                        vendor_groups[vendor_id] = []
-                    vendor_groups[vendor_id].append(item)
+            # Group by vendor and calculate pricing
+            vendor_groups = {}
+            for item in vendors:
+                vendor_id = item["vendor_id"]
+                if vendor_id not in vendor_groups:
+                    vendor_groups[vendor_id] = []
+                vendor_groups[vendor_id].append(item)
 
-                vendor_options = []
-                for vendor_id, items in vendor_groups.items():
-                    try:
-                        pricing = await self._calculate_order_pricing(order_data, vendor_id)
+            vendor_options = []
+            for vendor_id, items in vendor_groups.items():
+                try:
+                    pricing = await self._calculate_order_pricing(order_data, vendor_id)
 
-                        if items:
-                            first_item = items[0]
-                            vendor_options.append(VendorSelectionResult(
-                                vendor_id=vendor_id,
-                                vendor_name=first_item["vendor_name"],
-                                location_id=first_item["location_id"],
-                                location_name=first_item["location_name"],
-                                distance_km=first_item["distance_km"],
-                                estimated_delivery_time_hours=first_item["estimated_delivery_time_hours"],
-                                total_price=pricing["total"],
-                                selection_reason="Available vendor option",
-                                vendor_rating=first_item.get("vendor_rating")
-                            ))
-                    except Exception:
-                        # Skip vendors with pricing issues
-                        continue
+                    if items:
+                        first_item = items[0]
+                        vendor_options.append(VendorSelectionResult(
+                            vendor_id=vendor_id,
+                            vendor_name=first_item["vendor_name"],
+                            location_id=first_item["location_id"],
+                            location_name=first_item["location_name"],
+                            distance_km=first_item["distance_km"],
+                            estimated_delivery_time_hours=first_item["estimated_delivery_time_hours"],
+                            total_price=pricing["total"],
+                            selection_reason="Available vendor option",
+                            vendor_rating=first_item.get("vendor_rating")
+                        ))
+                except Exception:
+                    # Skip vendors with pricing issues
+                    continue
 
-                return vendor_options
+            return vendor_options
 
         except Exception as e:
             raise Exception(f"Failed to get vendor options: {str(e)}")

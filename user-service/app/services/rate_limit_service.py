@@ -41,6 +41,10 @@ class RateLimitConfig:
     EMAIL_VERIFICATION_MAX_ATTEMPTS = 5
     EMAIL_VERIFICATION_WINDOW_MINUTES = 60
 
+    # Registration
+    REGISTRATION_MAX_ATTEMPTS = 5
+    REGISTRATION_WINDOW_MINUTES = 60
+
 
 class RateLimitService:
     """Rate limiting and brute force protection service."""
@@ -209,6 +213,23 @@ class RateLimitService:
             "email_verification",
             identifier,
             self.config.EMAIL_VERIFICATION_WINDOW_MINUTES
+        )
+
+    async def check_registration_rate_limit(self, identifier: str) -> Tuple[bool, int, int]:
+        """Check registration rate limit."""
+        return await self.check_rate_limit(
+            "registration",
+            identifier,
+            self.config.REGISTRATION_MAX_ATTEMPTS,
+            self.config.REGISTRATION_WINDOW_MINUTES
+        )
+
+    async def increment_registration_attempts(self, identifier: str) -> int:
+        """Increment registration attempts."""
+        return await self.increment_rate_limit(
+            "registration",
+            identifier,
+            self.config.REGISTRATION_WINDOW_MINUTES
         )
     
     async def record_login_attempt(

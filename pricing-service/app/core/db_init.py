@@ -206,13 +206,18 @@ async def create_pricing_functions(engine):
                 $$ LANGUAGE plpgsql;
             """))
             
-            # Create trigger for price change logging
+            # Create trigger for price change logging (only if table exists)
             await conn.execute(text("""
-                DROP TRIGGER IF EXISTS trigger_log_price_change ON pricing_tiers;
-                CREATE TRIGGER trigger_log_price_change
-                    AFTER UPDATE ON pricing_tiers
-                    FOR EACH ROW
-                    EXECUTE FUNCTION log_price_change();
+                DO $$
+                BEGIN
+                    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'pricing_tiers') THEN
+                        DROP TRIGGER IF EXISTS trigger_log_price_change ON pricing_tiers;
+                        CREATE TRIGGER trigger_log_price_change
+                            AFTER UPDATE ON pricing_tiers
+                            FOR EACH ROW
+                            EXECUTE FUNCTION log_price_change();
+                    END IF;
+                END $$;
             """))
             
             # Function to check price alerts

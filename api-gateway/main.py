@@ -9,8 +9,10 @@ import logging
 from typing import Optional, List
 import json
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 import secrets
+import asyncio
+from functools import lru_cache
 
 # Configure logging first
 logging.basicConfig(level=logging.INFO)
@@ -90,12 +92,119 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "DELETE", "PATCH"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type", "X-Requested-With", "Accept"],
     expose_headers=["X-RateLimit-Limit", "X-RateLimit-Remaining", "X-RateLimit-Reset"]
 )
 
 security = HTTPBearer()
+
+
+# Global exception handlers
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException):
+    """Handle HTTP exceptions with proper error response format."""
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={
+            "error": {
+                "code": exc.status_code,
+                "message": exc.detail,
+                "type": "http_error"
+            },
+            "timestamp": datetime.utcnow().isoformat(),
+            "path": str(request.url.path)
+        }
+    )
+
+
+@app.exception_handler(Exception)
+async def general_exception_handler(request: Request, exc: Exception):
+    """Handle general exceptions with proper error response format."""
+    logger.error(f"Unhandled exception in {request.method} {request.url}: {exc}")
+    return JSONResponse(
+        status_code=500,
+        content={
+            "error": {
+                "code": 500,
+                "message": "Internal server error",
+                "type": "server_error"
+            },
+            "timestamp": datetime.utcnow().isoformat(),
+            "path": str(request.url.path)
+        }
+    )
+
+
+@app.exception_handler(422)
+async def validation_exception_handler(request: Request, exc):
+    """Handle validation errors with detailed error information."""
+    return JSONResponse(
+        status_code=422,
+        content={
+            "error": {
+                "code": 422,
+                "message": "Validation error",
+                "type": "validation_error",
+                "details": getattr(exc, 'errors', lambda: [])() if hasattr(exc, 'errors') else []
+            },
+            "timestamp": datetime.utcnow().isoformat(),
+            "path": str(request.url.path)
+        }
+    )
+
+
+# Request validation middleware
+@app.middleware("http")
+async def request_validation_middleware(request: Request, call_next):
+    """Middleware to handle malformed requests and add security headers."""
+    try:
+        # Handle malformed JSON
+        if request.headers.get("content-type") == "application/json":
+            if hasattr(request, '_body'):
+                try:
+                    body = await request.body()
+                    if body:
+                        json.loads(body)
+                except json.JSONDecodeError:
+                    return JSONResponse(
+                        status_code=400,
+                        content={
+                            "error": {
+                                "code": 400,
+                                "message": "Invalid JSON format",
+                                "type": "json_error"
+                            },
+                            "timestamp": datetime.utcnow().isoformat(),
+                            "path": str(request.url.path)
+                        }
+                    )
+
+        # Process the request
+        response = await call_next(request)
+
+        # Add security headers
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["X-XSS-Protection"] = "1; mode=block"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+
+        return response
+
+    except Exception as e:
+        logger.error(f"Request validation middleware error: {e}")
+        return JSONResponse(
+            status_code=500,
+            content={
+                "error": {
+                    "code": 500,
+                    "message": "Request processing error",
+                    "type": "middleware_error"
+                },
+                "timestamp": datetime.utcnow().isoformat(),
+                "path": str(request.url.path)
+            }
+        )
 
 
 # Security event logging
@@ -480,29 +589,110 @@ async def root():
     }
 
 
+# Health check cache
+_health_cache = {}
+_health_cache_timestamp = None
+HEALTH_CACHE_TTL = 30  # Cache for 30 seconds
+
+
+async def check_service_health(service_name: str, service_url: str) -> dict:
+    """Check health of a single service."""
+    try:
+        async with httpx.AsyncClient(timeout=2.0) as client:  # Reduced timeout
+            start_time = time.time()
+            response = await client.get(f"{service_url}/health")
+            response_time = time.time() - start_time
+
+            return {
+                "status": "healthy" if response.status_code == 200 else "unhealthy",
+                "response_time": response_time
+            }
+    except Exception as e:
+        return {
+            "status": "unreachable",
+            "response_time": None,
+            "error": str(e)
+        }
+
+
+async def get_all_services_health():
+    """Get health status of all services concurrently."""
+    tasks = []
+    for service_name, service_url in SERVICE_URLS.items():
+        task = check_service_health(service_name, service_url)
+        tasks.append((service_name, task))
+
+    service_health = {}
+    results = await asyncio.gather(*[task for _, task in tasks], return_exceptions=True)
+
+    for (service_name, _), result in zip(tasks, results):
+        if isinstance(result, Exception):
+            service_health[service_name] = {
+                "status": "error",
+                "response_time": None,
+                "error": str(result)
+            }
+        else:
+            service_health[service_name] = result
+
+    return service_health
+
+
 @app.get("/health")
 async def health_check():
-    """Health check endpoint."""
-    service_health = {}
-    
-    async with httpx.AsyncClient() as client:
-        for service_name, service_url in SERVICE_URLS.items():
-            try:
-                response = await client.get(f"{service_url}/health", timeout=5.0)
-                service_health[service_name] = {
-                    "status": "healthy" if response.status_code == 200 else "unhealthy",
-                    "response_time": response.elapsed.total_seconds()
-                }
-            except Exception:
-                service_health[service_name] = {
-                    "status": "unreachable",
-                    "response_time": None
-                }
-    
+    """Optimized health check endpoint with caching and concurrent requests."""
+    global _health_cache, _health_cache_timestamp
+
+    # Check if we have cached results that are still valid
+    now = datetime.utcnow()
+    if (_health_cache_timestamp and
+        (now - _health_cache_timestamp).total_seconds() < HEALTH_CACHE_TTL):
+        return _health_cache
+
+    # Get fresh health data
+    service_health = await get_all_services_health()
+
+    # Calculate overall health
+    healthy_services = sum(1 for status in service_health.values()
+                          if status.get("status") == "healthy")
+    total_services = len(service_health)
+
+    result = {
+        "gateway_status": "healthy" if healthy_services > total_services * 0.8 else "degraded",
+        "timestamp": now.isoformat(),
+        "services": service_health,
+        "summary": {
+            "healthy": healthy_services,
+            "total": total_services,
+            "health_percentage": (healthy_services / total_services) * 100 if total_services > 0 else 0
+        }
+    }
+
+    # Cache the result
+    _health_cache = result
+    _health_cache_timestamp = now
+
+    return result
+
+
+@app.get("/health/quick")
+async def quick_health_check():
+    """Quick health check that returns cached results immediately."""
+    global _health_cache, _health_cache_timestamp
+
+    if _health_cache and _health_cache_timestamp:
+        cache_age = (datetime.utcnow() - _health_cache_timestamp).total_seconds()
+        result = _health_cache.copy()
+        result["cache_age_seconds"] = cache_age
+        result["cached"] = True
+        return result
+
+    # If no cache, return basic status
     return {
         "gateway_status": "healthy",
         "timestamp": datetime.utcnow().isoformat(),
-        "services": service_health
+        "cached": False,
+        "message": "No cached health data available"
     }
 
 
@@ -586,6 +776,14 @@ async def pricing_service(path: str, request: Request, user_data: dict = Depends
     return response
 
 
+# Public Vendor Discovery (No Authentication Required)
+@app.api_route("/vendors/public/{path:path}", methods=["GET"])
+async def public_vendors_service(path: str, request: Request):
+    """Proxy to Pricing Service - Public vendor discovery (no auth required)."""
+    response = await proxy_request("pricing", f"/api/v1/vendors/public/{path}", request, None)
+    return response
+
+
 @app.api_route("/vendors/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH"])
 async def vendors_service(path: str, request: Request, user_data: dict = Depends(verify_token)):
     """Proxy to Pricing Service - Vendor discovery and management."""
@@ -614,7 +812,15 @@ async def product_availability_service(request: Request, user_data: dict = Depen
     return response
 
 
-# Product Catalog Routes (Inventory Service)
+# Public Product Catalog Routes (No Authentication Required)
+@app.api_route("/catalog/public/{path:path}", methods=["GET"])
+async def public_catalog_service(path: str, request: Request):
+    """Proxy to Inventory Service Public Product Catalog (no auth required)."""
+    response = await proxy_request("inventory", f"/catalog/public/{path}", request, None)
+    return response
+
+
+# Product Catalog Routes (Inventory Service - Authentication Required)
 @app.api_route("/catalog/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH"])
 async def catalog_service(path: str, request: Request, user_data: dict = Depends(verify_token)):
     """Proxy to Inventory Service Product Catalog."""

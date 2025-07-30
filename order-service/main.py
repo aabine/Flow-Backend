@@ -7,6 +7,7 @@ from typing import Optional, List
 import os
 import sys
 import logging
+import secrets
 
 # Configure logging
 logging.basicConfig(
@@ -210,8 +211,27 @@ async def create_direct_order(
         if current_user["role"] != UserRole.HOSPITAL:
             raise HTTPException(status_code=403, detail="Only hospitals can create direct orders")
 
+        # Create user context for service calls (header-based authentication)
+        correlation_id = secrets.token_urlsafe(16)
+        user_context = {
+            "user_id": current_user["user_id"],
+            "role": current_user["role"],
+            "correlation_id": correlation_id
+        }
+
+        logger.info(
+            f"Creating direct order for hospital {current_user['user_id']}",
+            extra={
+                "correlation_id": correlation_id,
+                "user_id": current_user["user_id"],
+                "user_role": str(current_user["role"]),
+                "service": "order-service",
+                "endpoint": "/orders/direct"
+            }
+        )
+
         direct_order = await order_service.create_direct_order(
-            db, current_user["user_id"], order_data
+            db, current_user["user_id"], order_data, user_context
         )
 
         return direct_order
@@ -235,7 +255,26 @@ async def get_order_pricing(
         if current_user["role"] != UserRole.HOSPITAL:
             raise HTTPException(status_code=403, detail="Only hospitals can request pricing")
 
-        pricing_response = await order_service.get_order_pricing(pricing_request)
+        # Create user context for service calls (header-based authentication)
+        correlation_id = secrets.token_urlsafe(16)
+        user_context = {
+            "user_id": current_user["user_id"],
+            "role": current_user["role"],
+            "correlation_id": correlation_id
+        }
+
+        logger.info(
+            f"Getting order pricing for hospital {current_user['user_id']}",
+            extra={
+                "correlation_id": correlation_id,
+                "user_id": current_user["user_id"],
+                "user_role": str(current_user["role"]),
+                "service": "order-service",
+                "endpoint": "/orders/pricing"
+            }
+        )
+
+        pricing_response = await order_service.get_order_pricing(pricing_request, user_context)
 
         return pricing_response
     except HTTPException:

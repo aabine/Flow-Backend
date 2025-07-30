@@ -4,7 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
-from typing import Optional
+from typing import Optional, Dict, Any
 from pydantic import BaseModel
 from datetime import datetime, timedelta
 from jose import jwt
@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from app.core.config import get_settings
-from app.core.security import create_access_token, verify_token, get_password_hash, verify_password
+from app.core.security import create_access_token, verify_token, get_password_hash, verify_password, verify_token_with_session
 from app.core.database import get_db
 from app.models.user import User, UserProfile, VendorProfile, HospitalProfile
 from app.schemas.user import (UserCreate, UserLogin, UserResponse, TokenResponse, UserUpdate,
@@ -46,7 +46,8 @@ from app.services.gdpr_service import gdpr_service
 from app.services.api_key_service import api_key_service, APIKeyPermission
 from app.services.oauth_service import oauth_service, OAuthProvider
 from app.middleware.rate_limit_middleware import (RateLimitMiddleware, LoginRateLimitMiddleware,
-                                                 PasswordResetRateLimitMiddleware, EmailVerificationRateLimitMiddleware)
+                                                 PasswordResetRateLimitMiddleware, EmailVerificationRateLimitMiddleware,
+                                                 RegistrationRateLimitMiddleware)
 from app.middleware.api_key_middleware import api_key_auth, service_auth, user_read_auth, admin_auth
 from app.utils.device_detection import get_device_info, format_session_info
 from app.core.db_init import init_user_database
@@ -58,8 +59,19 @@ app = FastAPI(
     version="1.0.0"
 )
 
+# Security
+security = HTTPBearer()
+
 # Database initialization flag
 _db_initialized = False
+
+# Enhanced authentication dependency
+async def get_current_user_payload(
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+    db: AsyncSession = Depends(get_db)
+) -> Dict[str, Any]:
+    """Enhanced authentication dependency that validates session and blacklist."""
+    return await verify_token_with_session(credentials.credentials, db)
 
 @app.on_event("startup")
 async def startup_event():
@@ -135,15 +147,23 @@ async def get_all_users_admin(
     size: int = Query(20, ge=1, le=100),
     role: Optional[str] = Query(None),
     is_active: Optional[bool] = Query(None),
-    current_user: dict = Depends(get_current_admin_user),
+    payload: Dict[str, Any] = Depends(get_current_user_payload),
     db: AsyncSession = Depends(get_db)
 ):
     """Get all users for admin (admin only)."""
-    # Admin access already verified by get_current_admin_user dependency
-
     try:
-        # Build query
-        query = select(User)
+        # Check if user is admin
+        if payload.get("role") != "admin":
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Admin access required"
+            )
+
+        # Build query with join to UserProfile
+        from app.models.user import UserProfile
+        query = select(User, UserProfile).outerjoin(
+            UserProfile, User.id == UserProfile.user_id
+        )
 
         # Apply filters
         if role:
@@ -157,7 +177,7 @@ async def get_all_users_admin(
 
         # Execute query
         result = await db.execute(query)
-        users = result.scalars().all()
+        user_profile_pairs = result.all()
 
         # Get total count
         count_query = select(func.count(User.id))
@@ -171,11 +191,17 @@ async def get_all_users_admin(
 
         # Format response
         user_list = []
-        for user in users:
+        for user, profile in user_profile_pairs:
+            full_name = None
+            if profile and profile.first_name and profile.last_name:
+                full_name = f"{profile.first_name} {profile.last_name}"
+            elif profile and profile.first_name:
+                full_name = profile.first_name
+
             user_list.append({
                 "id": str(user.id),
                 "email": user.email,
-                "full_name": user.full_name,
+                "full_name": full_name,
                 "role": user.role,
                 "is_active": user.is_active,
                 "email_verified": user.email_verified,
@@ -191,6 +217,8 @@ async def get_all_users_admin(
             "pages": (total + size - 1) // size
         }
 
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -206,6 +234,9 @@ async def register(
 ):
     """Register a new user with email verification."""
     try:
+        # Check rate limits
+        await RegistrationRateLimitMiddleware.check_registration_rate_limit(request)
+
         # Check if user already exists
         existing_user = await user_service.get_user_by_email(db, user_data.email)
         if existing_user:
@@ -248,6 +279,11 @@ async def register(
             await security_event_service.log_security_event(
                 db, SecurityEventType.EMAIL_VERIFICATION_SENT, str(user.id), ip_address, user_agent
             )
+
+        # Increment registration rate limit counter
+        from app.services.rate_limit_service import RateLimitService
+        ip_address = request.client.host
+        await RateLimitService().increment_registration_attempts(f"ip:{ip_address}")
 
         message = "User registered successfully"
         if email_sent:
@@ -377,8 +413,9 @@ async def login(
                 detail="Account is deactivated"
             )
 
-        # Check if email is verified
-        if not user.email_verified:
+        # Check if email is verified (bypass in development mode)
+        settings = get_settings()
+        if not user.email_verified and settings.ENVIRONMENT != "development":
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Please verify your email address before logging in"
@@ -387,12 +424,13 @@ async def login(
         # Check if MFA is required
         if user.mfa_enabled:
             # Create temporary MFA token
-            mfa_expire = datetime.now(datetime.timezone.utc) + timedelta(minutes=5)  # 5 minute expiry
+            from datetime import timezone
+            mfa_expire = datetime.now(timezone.utc) + timedelta(minutes=5)  # 5 minute expiry
             mfa_payload = {
                 "user_id": str(user.id),
                 "type": "mfa",
                 "exp": mfa_expire,
-                "iat": datetime.now(datetime.timezone.utc)
+                "iat": datetime.now(timezone.utc)
             }
             settings = get_settings()
 
@@ -487,40 +525,64 @@ async def login(
 
 
 @app.post("/auth/verify-token")
-async def verify_user_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
-    """Verify JWT token."""
+async def verify_user_token(
+    payload: Dict[str, Any] = Depends(get_current_user_payload)
+):
+    """Verify JWT token with session validation."""
+    return {
+        "valid": True,
+        "user_id": payload.get("user_id"),
+        "email": payload.get("sub"),
+        "role": payload.get("role")
+    }
+
+
+@app.get("/auth/blacklist-stats", response_model=APIResponse)
+async def get_blacklist_statistics(
+    payload: Dict[str, Any] = Depends(get_current_user_payload)
+):
+    """Get token blacklist statistics (admin only)."""
     try:
-        payload = verify_token(credentials.credentials)
-        return {
-            "valid": True,
-            "user_id": payload.get("user_id"),
-            "email": payload.get("sub"),
-            "role": payload.get("role")
-        }
-    except Exception:
+        # Check if user is admin
+        if payload.get("role") != "admin":
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Admin access required"
+            )
+
+        from app.core.security import get_blacklist_stats
+        stats = await get_blacklist_stats()
+
+        return APIResponse(
+            success=True,
+            message="Blacklist statistics retrieved",
+            data=stats
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid token"
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get blacklist stats: {str(e)}"
         )
 
 
 @app.get("/profile", response_model=UserResponse)
 async def get_profile(
-    credentials: HTTPAuthorizationCredentials = Depends(security),
+    payload: Dict[str, Any] = Depends(get_current_user_payload),
     db: AsyncSession = Depends(get_db)
 ):
     """Get user profile."""
     try:
-        payload = verify_token(credentials.credentials)
         user_id = payload.get("user_id")
-        
+
         user = await user_service.get_user_by_id(db, user_id)
         if not user:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="User not found"
             )
-        
+
         return UserResponse(
             id=str(user.id),
             email=user.email,
@@ -541,12 +603,11 @@ async def get_profile(
 @app.put("/profile", response_model=APIResponse)
 async def update_profile(
     user_update: UserUpdate,
-    credentials: HTTPAuthorizationCredentials = Depends(security),
+    payload: Dict[str, Any] = Depends(get_current_user_payload),
     db: AsyncSession = Depends(get_db)
 ):
     """Update user profile."""
     try:
-        payload = verify_token(credentials.credentials)
         user_id = payload.get("user_id")
         
         user = await user_service.update_user(db, user_id, user_update)
@@ -683,14 +744,33 @@ async def logout(
 ):
     """Logout current session."""
     try:
-        payload = verify_token(credentials.credentials)
-        jti = payload.get("jti")
-
-        # Find and revoke session by access token JTI
-        from sqlalchemy import update
+        from app.core.security import verify_token_with_session, blacklist_token
+        from sqlalchemy import update, select
         from app.models.user import UserSession
-        from datetime import datetime
+        from datetime import datetime, timedelta
 
+        # Verify token and session
+        payload = await verify_token_with_session(credentials.credentials, db)
+        jti = payload.get("jti")
+        exp = payload.get("exp")
+
+        # Get session to find refresh token JTI
+        result = await db.execute(
+            select(UserSession).filter(
+                UserSession.access_token_jti == jti
+            )
+        )
+        session = result.scalar_one_or_none()
+
+        # Blacklist both access and refresh tokens
+        await blacklist_token(jti, exp)
+        if session and session.refresh_token_jti:
+            # For refresh token, we need to calculate its expiration
+            # Refresh tokens typically expire in 7 days
+            refresh_exp = int((datetime.utcnow() + timedelta(days=7)).timestamp())
+            await blacklist_token(session.refresh_token_jti, refresh_exp)
+
+        # Mark session as inactive
         stmt = update(UserSession).where(
             UserSession.access_token_jti == jti
         ).values(
@@ -701,16 +781,12 @@ async def logout(
         result = await db.execute(stmt)
         await db.commit()
 
-        if result.rowcount > 0:
-            return APIResponse(
-                success=True,
-                message="Logged out successfully"
-            )
-        else:
-            return APIResponse(
-                success=True,
-                message="Session already expired"
-            )
+        return APIResponse(
+            success=True,
+            message="Logged out successfully"
+        )
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -725,15 +801,53 @@ async def logout_all_devices(
 ):
     """Logout from all devices."""
     try:
-        payload = verify_token(credentials.credentials)
+        from app.core.security import verify_token_with_session, blacklist_token
+        from sqlalchemy import select
+        from app.models.user import UserSession
+        from datetime import datetime, timedelta
+        import uuid
+
+        # Verify token and session
+        payload = await verify_token_with_session(credentials.credentials, db)
         user_id = payload.get("user_id")
 
+        # Get all active sessions for the user
+        from sqlalchemy import and_
+        result = await db.execute(
+            select(UserSession).filter(
+                and_(
+                    UserSession.user_id == uuid.UUID(user_id),
+                    UserSession.is_active == True
+                )
+            )
+        )
+        sessions = result.scalars().all()
+
+        # Blacklist all tokens for this user
+        blacklisted_count = 0
+        for session in sessions:
+            # Blacklist access token
+            if session.access_token_jti:
+                # Calculate expiration (access tokens expire in 30 minutes)
+                access_exp = int((datetime.utcnow() + timedelta(minutes=30)).timestamp())
+                await blacklist_token(session.access_token_jti, access_exp)
+                blacklisted_count += 1
+
+            # Blacklist refresh token
+            if session.refresh_token_jti:
+                # Refresh tokens expire in 7 days
+                refresh_exp = int((datetime.utcnow() + timedelta(days=7)).timestamp())
+                await blacklist_token(session.refresh_token_jti, refresh_exp)
+
+        # Revoke all sessions in database
         revoked_count = await jwt_service.revoke_all_user_sessions(db, user_id)
 
         return APIResponse(
             success=True,
             message=f"Logged out from {revoked_count} devices"
         )
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -743,17 +857,16 @@ async def logout_all_devices(
 
 @app.get("/auth/sessions", response_model=ActiveSessionsResponse)
 async def get_user_sessions(
-    credentials: HTTPAuthorizationCredentials = Depends(security),
+    payload: Dict[str, Any] = Depends(get_current_user_payload),
     db: AsyncSession = Depends(get_db)
 ):
     """Get user's active sessions with device information."""
     try:
-        payload = verify_token(credentials.credentials)
         user_id = payload.get("user_id")
         current_jti = payload.get("jti")
 
         # Get sessions from database with full details
-        from sqlalchemy import select
+        from sqlalchemy import select, and_
         from app.models.user import UserSession
         import uuid
 
@@ -1773,14 +1886,15 @@ async def export_user_data(
         # In production, you might want to store this temporarily and provide a download link
         encoded_data = base64.b64encode(export_data).decode()
 
+        from datetime import timezone
         return APIResponse(
             success=True,
             message="Data export generated successfully",
             data={
                 "export_size_bytes": len(export_data),
-                "export_date": datetime.now(datetime.timezone.utc).isoformat(),
+                "export_date": datetime.now(timezone.utc).isoformat(),
                 "download_data": encoded_data,  # Base64 encoded ZIP file
-                "filename": f"user_data_export_{user_id}_{datetime.now(datetime.timezone.utc).strftime('%Y%m%d_%H%M%S')}.zip"
+                "filename": f"user_data_export_{user_id}_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.zip"
             }
         )
 
@@ -2206,6 +2320,100 @@ async def get_oauth_providers():
         )
 
 
+# Hospital Profile Management Endpoints
+@app.post("/hospital-profiles", response_model=APIResponse)
+async def create_hospital_profile(
+    profile_data: HospitalProfileCreate,
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+    db: AsyncSession = Depends(get_db)
+):
+    """Create hospital profile for current user."""
+    try:
+        payload = verify_token(credentials.credentials)
+        user_id = payload.get("user_id")
+        user_role = payload.get("role")
+
+        if user_role != UserRole.HOSPITAL:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Only hospitals can create hospital profiles"
+            )
+
+        # Check if hospital profile already exists
+        existing_profile = await user_service.get_hospital_profile(db, user_id)
+        if existing_profile:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Hospital profile already exists"
+            )
+
+        profile = await user_service.create_hospital_profile(db, user_id, profile_data)
+
+        return APIResponse(
+            success=True,
+            message="Hospital profile created successfully",
+            data={"hospital_profile_id": str(profile.id)}
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to create hospital profile: {str(e)}"
+        )
+
+
+@app.get("/hospital-profiles/{user_id}")
+async def get_hospital_profile(
+    user_id: str,
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+    db: AsyncSession = Depends(get_db)
+):
+    """Get hospital profile by user ID."""
+    try:
+        payload = verify_token(credentials.credentials)
+        requesting_user_id = payload.get("user_id")
+        requesting_user_role = payload.get("role")
+
+        # Users can only view their own profile unless they're admin
+        if requesting_user_id != user_id and requesting_user_role != UserRole.ADMIN:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Access denied"
+            )
+
+        profile = await user_service.get_hospital_profile(db, user_id)
+        if not profile:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Hospital profile not found"
+            )
+
+        return {
+            "success": True,
+            "data": {
+                "id": str(profile.id),
+                "user_id": str(profile.user_id),
+                "hospital_name": profile.hospital_name,
+                "registration_number": profile.registration_number,
+                "license_number": profile.license_number,
+                "contact_person": profile.contact_person,
+                "contact_phone": profile.contact_phone,
+                "bed_capacity": profile.bed_capacity,
+                "hospital_type": profile.hospital_type,
+                "created_at": profile.created_at.isoformat() if profile.created_at else None,
+                "updated_at": profile.updated_at.isoformat() if profile.updated_at else None
+            }
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get hospital profile: {str(e)}"
+        )
+
+
 # Vendor Profile Management Endpoints
 @app.post("/vendor-profiles", response_model=APIResponse)
 async def create_vendor_profile(
@@ -2469,6 +2677,104 @@ async def search_vendors(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to search vendors: {str(e)}"
+        )
+
+
+# Development-only endpoints
+@app.post("/dev/create-verified-user", response_model=APIResponse)
+async def create_verified_user(
+    user_data: UserCreate,
+    db: AsyncSession = Depends(get_db)
+):
+    """Development-only endpoint to create pre-verified users for testing."""
+    settings = get_settings()
+    if settings.ENVIRONMENT != "development":
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Endpoint not available in production"
+        )
+
+    try:
+        # Check if user already exists
+        existing_user = await user_service.get_user_by_email(db, user_data.email)
+        if existing_user:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="User with this email already exists"
+            )
+
+        # Create user with email already verified
+        user = await user_service.create_user(db, user_data)
+        user.email_verified = True
+        user.email_verified_at = datetime.utcnow()
+        await db.commit()
+        await db.refresh(user)
+
+        return {
+            "success": True,
+            "message": "Verified test user created successfully",
+            "data": {
+                "user_id": str(user.id),
+                "email": user.email,
+                "role": user.role,
+                "email_verified": user.email_verified
+            }
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        await db.rollback()
+        logger.error(f"Failed to create verified user: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to create verified user"
+        )
+
+
+@app.post("/dev/verify-user-email", response_model=APIResponse)
+async def verify_user_email_dev(
+    email: str,
+    db: AsyncSession = Depends(get_db)
+):
+    """Development-only endpoint to verify user email for testing."""
+    settings = get_settings()
+    if settings.ENVIRONMENT != "development":
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Endpoint not available in production"
+        )
+
+    try:
+        user = await user_service.get_user_by_email(db, email)
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User not found"
+            )
+
+        user.email_verified = True
+        user.email_verified_at = datetime.utcnow()
+        await db.commit()
+
+        return {
+            "success": True,
+            "message": f"Email verified for user: {email}",
+            "data": {
+                "user_id": str(user.id),
+                "email": user.email,
+                "email_verified": user.email_verified
+            }
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        await db.rollback()
+        logger.error(f"Failed to verify user email: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to verify user email"
         )
 
 

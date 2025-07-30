@@ -25,6 +25,7 @@ from app.api.inventory import router as inventory_router
 from app.api.stock_movements import router as stock_movements_router
 from app.api.product_catalog import router as product_catalog_router
 from app.api.cylinders import router as cylinders_router
+from app.api.vendors import router as vendors_router
 from app.services.event_service import event_service
 from shared.models import APIResponse
 
@@ -116,6 +117,7 @@ app.include_router(inventory_router, prefix="/inventory", tags=["inventory"])
 app.include_router(stock_movements_router, prefix="/stock-movements", tags=["stock-movements"])
 app.include_router(product_catalog_router, prefix="/catalog", tags=["product-catalog"])
 app.include_router(cylinders_router, prefix="/cylinders", tags=["cylinder-management"])
+app.include_router(vendors_router, prefix="/vendors", tags=["vendors"])
 
 
 @app.get("/health")

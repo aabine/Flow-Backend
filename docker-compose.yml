@@ -21,7 +21,7 @@ services:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./postgres-init:/docker-entrypoint-initdb.d:ro
+      # - ./postgres-init:/docker-entrypoint-initdb.d:ro
     networks:
       - oxygen-network
     healthcheck:
@@ -167,10 +167,13 @@ services:
       - DATABASE_URL=postgresql+asyncpg://user:password@postgres:5432/oxygen_platform
       - REDIS_URL=redis://redis:6379/0
       - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672/
+      - API_GATEWAY_URL=http://api-gateway:8000
+      - USER_SERVICE_URL=http://user-service:8001
       - INVENTORY_SERVICE_URL=http://inventory-service:8004
       - LOCATION_SERVICE_URL=http://location-service:8003
       - NOTIFICATION_SERVICE_URL=http://notification-service:8010
       - PRICING_SERVICE_URL=http://pricing-service:8006
+      - ORDER_SERVICE_API_KEY=${ORDER_SERVICE_API_KEY:-}
       - DB_INIT_MAX_RETRIES=10
       - DB_INIT_INITIAL_DELAY=1.0
       - DB_INIT_MAX_DELAY=30.0

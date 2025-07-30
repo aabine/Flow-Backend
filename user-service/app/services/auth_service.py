@@ -28,6 +28,7 @@ from shared.security.encryption import encryption_manager, data_masking
 from shared.models import UserRole
 from app.models.user import User, UserProfile, LoginAttempt, UserSession, MFADevice
 from app.core.config import get_settings
+from app.services.cache_service import user_cache_service
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -362,9 +363,37 @@ class AuthService:
             return False
 
     async def _get_user_by_email(self, db: AsyncSession, email: str) -> Optional[User]:
-        """Get user by email address."""
+        """Get user by email address with caching."""
+        # Try cache first
+        cache_key = f"user_email:{email}"
+        cached_user = await user_cache_service.get(cache_key)
+
+        if cached_user:
+            # Convert cached data back to User object
+            user_data = cached_user.get("data")
+            if user_data:
+                user = User(**user_data)
+                return user
+
+        # Cache miss - query database
         result = await db.execute(select(User).where(User.email == email))
-        return result.scalar_one_or_none()
+        user = result.scalar_one_or_none()
+
+        # Cache the result if user found
+        if user:
+            user_dict = {
+                "id": str(user.id),
+                "email": user.email,
+                "password_hash": user.password_hash,
+                "is_active": user.is_active,
+                "email_verified": user.email_verified,
+                "role": user.role.value if hasattr(user.role, 'value') else str(user.role),
+                "created_at": user.created_at.isoformat() if user.created_at else None,
+                "updated_at": user.updated_at.isoformat() if user.updated_at else None
+            }
+            await user_cache_service.set(cache_key, user_dict, 300)  # Cache for 5 minutes
+
+        return user
 
     async def _get_user_by_id(self, db: AsyncSession, user_id: str) -> Optional[User]:
         """Get user by ID."""
@@ -374,9 +403,9 @@ class AuthService:
     async def _is_account_locked(self, email: str, ip_address: str) -> bool:
         """Check if account or IP is locked due to failed login attempts."""
 
-        # Check account-based lockout
-        account_key = f"login_attempts:email:{email}"
-        account_attempts = self.redis_client.get(account_key)
+        # Check account-based lockout using cache service
+        account_attempts_data = await user_cache_service.get_login_attempts(f"email:{email}")
+        account_attempts = account_attempts_data.get("count", 0) if account_attempts_data else 0
 
         if account_attempts and int(account_attempts) >= self.max_login_attempts:
             return True

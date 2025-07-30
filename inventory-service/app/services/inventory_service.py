@@ -247,7 +247,65 @@ class InventoryService:
         
         await db.commit()
         return True
-    
+
+    async def create_reservation(
+        self,
+        db: AsyncSession,
+        reservation_data: "StockReservationCreate",
+        user_id: str
+    ) -> "StockReservation":
+        """Create a stock reservation from reservation data."""
+        from app.schemas.inventory import StockReservationCreate
+        from app.models.inventory import StockReservation
+
+        # Find the inventory location that has stock for this cylinder size
+        # For now, we'll need to get the inventory_id from the first available location
+        # In a real implementation, this should be passed or determined by business logic
+        result = await db.execute(
+            select(CylinderStock)
+            .join(Inventory, CylinderStock.inventory_id == Inventory.id)
+            .where(and_(
+                CylinderStock.cylinder_size == reservation_data.cylinder_size,
+                CylinderStock.available_quantity >= reservation_data.quantity
+            ))
+            .limit(1)
+        )
+        stock = result.scalar_one_or_none()
+
+        if not stock:
+            raise ValueError(f"No available stock found for {reservation_data.cylinder_size} with quantity {reservation_data.quantity}")
+
+        # Use the existing reserve_stock method
+        success = await self.reserve_stock(
+            db=db,
+            inventory_id=str(stock.inventory_id),
+            cylinder_size=reservation_data.cylinder_size,
+            quantity=reservation_data.quantity,
+            order_id=reservation_data.order_id,
+            user_id=user_id
+        )
+
+        if not success:
+            raise ValueError("Failed to reserve stock")
+
+        # Get the created reservation
+        result = await db.execute(
+            select(StockReservation)
+            .where(and_(
+                StockReservation.order_id == reservation_data.order_id,
+                StockReservation.cylinder_size == reservation_data.cylinder_size,
+                StockReservation.is_active == True
+            ))
+            .order_by(StockReservation.created_at.desc())
+            .limit(1)
+        )
+        reservation = result.scalar_one_or_none()
+
+        if not reservation:
+            raise ValueError("Reservation was created but could not be retrieved")
+
+        return reservation
+
     async def release_reservation(
         self,
         db: AsyncSession,

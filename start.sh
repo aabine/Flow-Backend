@@ -31,19 +31,22 @@ verify_database_connection() {
     echo "🔍 Verifying basic PostgreSQL connectivity..."
 
     # Check if PostgreSQL container is running
-    if ! docker ps | grep -q "postgres"; then
-        echo "❌ PostgreSQL container is not running"
+    if ! docker ps --format "table {{.Names}}" | grep -q "flow-backend_postgres"; then
+        echo "❌ PostgreSQL container 'flow-backend_postgres' is not running"
+        echo "🔍 Available containers:"
+        docker ps --format "table {{.Names}}\t{{.Status}}" | grep -E "(postgres|flow-backend)"
         return 1
     fi
+    echo "✅ PostgreSQL container is running"
 
     # Check if we can connect to PostgreSQL server
-    if ! docker exec flow-backend_postgres_1 psql -U user -d postgres -c "SELECT 1;" >/dev/null 2>&1; then
+    if ! docker exec flow-backend_postgres psql -U user -d postgres -c "SELECT 1;" >/dev/null 2>&1; then
         echo "❌ Cannot connect to PostgreSQL server"
         return 1
     fi
 
     # Check if target database exists
-    if docker exec flow-backend_postgres_1 psql -U user -d postgres -t -c "SELECT 1 FROM pg_database WHERE datname = 'oxygen_platform';" | grep -q "1"; then
+    if docker exec flow-backend_postgres psql -U user -d postgres -t -c "SELECT 1 FROM pg_database WHERE datname = 'oxygen_platform';" | grep -q "1"; then
         echo "✅ Target database 'oxygen_platform' exists"
     else
         echo "❌ Target database 'oxygen_platform' does not exist"
@@ -51,7 +54,7 @@ verify_database_connection() {
     fi
 
     # Verify we can connect to the target database
-    if docker exec flow-backend_postgres_1 psql -U user -d oxygen_platform -c "SELECT 1;" >/dev/null 2>&1; then
+    if docker exec flow-backend_postgres psql -U user -d oxygen_platform -c "SELECT 1;" >/dev/null 2>&1; then
         echo "✅ Successfully connected to oxygen_platform database"
     else
         echo "❌ Cannot connect to oxygen_platform database"
@@ -152,7 +155,7 @@ echo "🗄️ Waiting for PostgreSQL to be ready..."
 max_attempts=30
 attempt=1
 while [ $attempt -le $max_attempts ]; do
-    if docker exec flow-backend_postgres_1 pg_isready -U user -d oxygen_platform >/dev/null 2>&1; then
+    if docker exec flow-backend_postgres pg_isready -U user -d oxygen_platform >/dev/null 2>&1; then
         echo "✅ PostgreSQL is ready"
         break
     fi
@@ -181,12 +184,17 @@ if [ -f "scripts/init-database.py" ]; then
     echo "📋 Legacy script at scripts/init-database.py is no longer used"
 fi
 
+# Give PostgreSQL a moment to fully initialize after readiness check
+echo "⏳ Allowing PostgreSQL to fully initialize..."
+sleep 5
+
 # Verify basic database connectivity before starting services
 echo "🔍 Verifying basic database connectivity (PostgreSQL server and database)..."
 if ! verify_database_connection; then
     echo "❌ Basic database connectivity verification failed"
     echo "🔍 Please ensure PostgreSQL container is running and accessible"
-    echo "📋 Connection details: postgresql://user:password@localhost:5432/oxygen_platform"
+    echo "📋 Connection details: postgresql://user:password@postgres:5432/oxygen_platform (inside containers)"
+    echo "📋 External access: postgresql://user:password@localhost:5432/oxygen_platform"
     echo "🐳 Try: docker-compose up -d postgres"
     exit 1
 fi

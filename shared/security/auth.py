@@ -3,7 +3,7 @@ Shared authentication and authorization utilities for the Oxygen Supply Platform
 Implements JWT token validation, role-based access control, and security utilities.
 """
 
-from jose import jwt
+from jose import jwt, JWTError
 import bcrypt
 import secrets
 import hashlib
@@ -261,7 +261,7 @@ class JWTManager:
             
             # Verify token type if specified
             if expected_type and payload.get("type") != expected_type.value:
-                raise jwt.InvalidTokenError(f"Invalid token type. Expected {expected_type.value}")
+                raise JWTError(f"Invalid token type. Expected {expected_type.value}")
             
             # Check if token is expired
             if datetime.now(datetime.timezone.utc) > datetime.fromtimestamp(payload["exp"], datetime.timezone.utc):
@@ -272,12 +272,12 @@ class JWTManager:
         except jwt.ExpiredSignatureError:
             logger.warning(f"Expired token attempted: {token[:20]}...")
             raise
-        except jwt.InvalidTokenError as e:
+        except JWTError as e:
             logger.warning(f"Invalid token attempted: {token[:20]}... - {str(e)}")
             raise
         except Exception as e:
             logger.error(f"Token verification error: {str(e)}")
-            raise jwt.InvalidTokenError("Token verification failed")
+            raise JWTError("Token verification failed")
     
     def encrypt_sensitive_data(self, data: str) -> str:
         """Encrypt sensitive data for storage."""

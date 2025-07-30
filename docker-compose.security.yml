@@ -13,6 +13,16 @@ services:
       - ADMIN_IP_WHITELIST=10.0.0.0/8,172.16.0.0/12,192.168.0.0/16
       - JWT_SECRET_KEY=${JWT_SECRET_KEY}
       - ENCRYPTION_KEY=${ENCRYPTION_KEY}
+
+      # Enhanced security settings
+      - HTTPS_ONLY=true
+      - SECURE_COOKIES=true
+      - CSRF_PROTECTION=true
+      - RATE_LIMIT_ENABLED=true
+      - MAX_REQUESTS_PER_MINUTE=100
+      - MAX_REQUEST_SIZE_MB=10
+      - ENABLE_SECURITY_HEADERS=true
+      - ALLOWED_HOSTS=localhost,127.0.0.1,api.oxygen-platform.com
     networks:
       - frontend
       - backend

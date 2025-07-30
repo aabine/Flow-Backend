@@ -15,10 +15,15 @@ class Settings(BaseSettings):
     RABBITMQ_REQUIRED: bool = os.getenv("RABBITMQ_REQUIRED", "false").lower() == "true"
     
     # Service URLs
+    API_GATEWAY_URL: str = os.getenv("API_GATEWAY_URL", "http://localhost:8000")
+    USER_SERVICE_URL: str = os.getenv("USER_SERVICE_URL", "http://localhost:8001")
     INVENTORY_SERVICE_URL: str = os.getenv("INVENTORY_SERVICE_URL", "http://localhost:8004")
     LOCATION_SERVICE_URL: str = os.getenv("LOCATION_SERVICE_URL", "http://localhost:8003")
     NOTIFICATION_SERVICE_URL: str = os.getenv("NOTIFICATION_SERVICE_URL", "http://localhost:8010")
     PRICING_SERVICE_URL: str = os.getenv("PRICING_SERVICE_URL", "http://localhost:8006")
+
+    # Service Authentication
+    ORDER_SERVICE_API_KEY: str = os.getenv("ORDER_SERVICE_API_KEY", "")
     
     # Environment
     ENVIRONMENT: str = os.getenv("ENVIRONMENT", "development")

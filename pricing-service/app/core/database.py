@@ -69,10 +69,11 @@ async def close_db():
 async def check_db_health() -> bool:
     """Check database connectivity and health."""
     try:
+        from sqlalchemy import text
         async with AsyncSessionLocal() as session:
             # Simple query to test connection
-            result = await session.execute("SELECT 1")
-            await result.fetchone()
+            result = await session.execute(text("SELECT 1"))
+            result.fetchone()  # Remove await since fetchone() is not async
             return True
     except Exception as e:
         logger.error(f"Database health check failed: {e}")

@@ -28,8 +28,10 @@ class ProductCatalogService:
     async def search_catalog(
         self,
         db: AsyncSession,
-        request: ProductCatalogRequest
-    ) -> List[ProductCatalogItem]:
+        request: ProductCatalogRequest,
+        page: int = 1,
+        page_size: int = 20
+    ) -> tuple[List[ProductCatalogItem], int]:
         """Search product catalog with location-based filtering and pricing."""
         try:
             # Get inventory locations within radius
@@ -100,7 +102,13 @@ class ProductCatalogService:
             # Sort results
             catalog_items = self._sort_catalog_items(catalog_items, request.sort_by, request.sort_order)
 
-            return catalog_items
+            # Apply pagination
+            total_items = len(catalog_items)
+            start_index = (page - 1) * page_size
+            end_index = start_index + page_size
+            paginated_items = catalog_items[start_index:end_index]
+
+            return paginated_items, total_items
 
         except Exception as e:
             raise Exception(f"Failed to search catalog: {str(e)}")

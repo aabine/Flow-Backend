@@ -220,6 +220,34 @@ class PasswordResetRateLimitMiddleware:
             )
 
 
+class RegistrationRateLimitMiddleware:
+    """Rate limiting for registration endpoints."""
+
+    @staticmethod
+    async def check_registration_rate_limit(request: Request) -> None:
+        """Check registration rate limits."""
+        # Get client IP
+        forwarded_for = request.headers.get("X-Forwarded-For")
+        if forwarded_for:
+            client_ip = forwarded_for.split(",")[0].strip()
+        else:
+            client_ip = request.client.host
+
+        # Check IP-based rate limit for registration
+        ip_allowed, ip_count, ip_remaining = await RateLimitService().check_registration_rate_limit(f"ip:{client_ip}")
+
+        if not ip_allowed:
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail="Too many registration attempts from this IP address. Please try again later.",
+                headers={
+                    "Retry-After": "3600",  # 1 hour
+                    "X-RateLimit-Limit": "5",  # 5 registrations per hour per IP
+                    "X-RateLimit-Remaining": str(ip_remaining)
+                }
+            )
+
+
 class EmailVerificationRateLimitMiddleware:
     """Rate limiting for email verification endpoints."""
     

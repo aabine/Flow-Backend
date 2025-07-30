@@ -16,6 +16,52 @@ router = APIRouter()
 logger = logging.getLogger(__name__)
 
 
+@router.get("/public/nearby", response_model=VendorListResponse)
+async def get_public_nearby_vendors(
+    latitude: float = Query(..., ge=-90, le=90, description="Latitude coordinate"),
+    longitude: float = Query(..., ge=-180, le=180, description="Longitude coordinate"),
+    radius_km: float = Query(50.0, gt=0, le=200, description="Search radius in kilometers"),
+    business_type: Optional[str] = Query(None, description="Filter by business type"),
+    verification_status: Optional[str] = Query("verified", description="Filter by verification status"),
+    minimum_rating: Optional[float] = Query(None, ge=0, le=5, description="Minimum vendor rating"),
+    emergency_delivery: Optional[bool] = Query(None, description="Filter vendors with emergency delivery"),
+    page: int = Query(1, ge=1, description="Page number"),
+    page_size: int = Query(20, ge=1, le=100, description="Items per page"),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Get nearby vendors for public browsing (no authentication required).
+
+    This endpoint allows potential users to discover vendors in their area
+    without requiring registration or authentication.
+    """
+    try:
+        search_request = VendorSearchRequest(
+            latitude=latitude,
+            longitude=longitude,
+            radius_km=radius_km,
+            business_type=business_type,
+            verification_status=verification_status,
+            minimum_rating=minimum_rating,
+            emergency_delivery=emergency_delivery,
+            page=page,
+            page_size=page_size
+        )
+
+        vendor_service = VendorService()
+        vendors = await vendor_service.search_nearby_vendors(db, search_request)
+
+        return vendors
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get public nearby vendors: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get nearby vendors: {str(e)}"
+        )
+
+
 @router.get("/nearby", response_model=VendorListResponse)
 async def get_nearby_vendors(
     latitude: float = Query(..., ge=-90, le=90, description="Latitude coordinate"),

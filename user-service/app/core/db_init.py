@@ -36,21 +36,19 @@ USER_SERVICE_INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_user_sessions_active ON user_sessions(is_active)",
     
     "CREATE INDEX IF NOT EXISTS idx_user_profiles_user_id ON user_profiles(user_id)",
-    "CREATE INDEX IF NOT EXISTS idx_user_profiles_phone ON user_profiles(phone)",
+    "CREATE INDEX IF NOT EXISTS idx_user_profiles_phone_number ON user_profiles(phone_number)",
     "CREATE INDEX IF NOT EXISTS idx_user_profiles_city ON user_profiles(city)",
     "CREATE INDEX IF NOT EXISTS idx_user_profiles_state ON user_profiles(state)",
     
     "CREATE INDEX IF NOT EXISTS idx_vendor_profiles_user_id ON vendor_profiles(user_id)",
     "CREATE INDEX IF NOT EXISTS idx_vendor_profiles_business_name ON vendor_profiles(business_name)",
-    "CREATE INDEX IF NOT EXISTS idx_vendor_profiles_verification_status ON vendor_profiles(verification_status)",
-    "CREATE INDEX IF NOT EXISTS idx_vendor_profiles_is_active ON vendor_profiles(is_active)",
-    "CREATE INDEX IF NOT EXISTS idx_vendor_profiles_service_areas ON vendor_profiles USING GIN(service_areas)",
+    "CREATE INDEX IF NOT EXISTS idx_vendor_profiles_supplier_onboarding_status ON vendor_profiles(supplier_onboarding_status)",
     
     "CREATE INDEX IF NOT EXISTS idx_hospital_profiles_user_id ON hospital_profiles(user_id)",
     "CREATE INDEX IF NOT EXISTS idx_hospital_profiles_hospital_name ON hospital_profiles(hospital_name)",
     "CREATE INDEX IF NOT EXISTS idx_hospital_profiles_license_number ON hospital_profiles(license_number)",
-    "CREATE INDEX IF NOT EXISTS idx_hospital_profiles_verification_status ON hospital_profiles(verification_status)",
-    "CREATE INDEX IF NOT EXISTS idx_hospital_profiles_emergency_contact ON hospital_profiles(emergency_contact_number)",
+
+    "CREATE INDEX IF NOT EXISTS idx_hospital_profiles_emergency_contact ON hospital_profiles(emergency_contact)",
 
     # Password reset token indexes
     "CREATE INDEX IF NOT EXISTS idx_password_reset_tokens_user_id ON password_reset_tokens(user_id)",
@@ -67,16 +65,12 @@ USER_SERVICE_INDEXES = [
 
 # Define constraints for user service tables (format: table_name:constraint_name:constraint_definition)
 USER_SERVICE_CONSTRAINTS = [
-    "users:chk_user_role:CHECK (role IN ('hospital', 'vendor', 'admin'))",
+    "users:chk_user_role:CHECK (role IN ('HOSPITAL', 'VENDOR', 'ADMIN'))",
     "users:chk_failed_login_attempts:CHECK (failed_login_attempts >= 0)",
 
-    "vendor_profiles:chk_vendor_verification_status:CHECK (verification_status IN ('pending', 'verified', 'rejected', 'suspended'))",
-    "vendor_profiles:chk_vendor_rating:CHECK (average_rating >= 0 AND average_rating <= 5)",
-    "vendor_profiles:chk_vendor_total_orders:CHECK (total_orders >= 0)",
+    "vendor_profiles:chk_vendor_supplier_onboarding_status:CHECK (supplier_onboarding_status IN ('PENDING_VERIFICATION', 'VERIFIED', 'REJECTED', 'SUSPENDED'))",
 
-    "hospital_profiles:chk_hospital_verification_status:CHECK (verification_status IN ('pending', 'verified', 'rejected', 'suspended'))",
-    "hospital_profiles:chk_hospital_bed_capacity:CHECK (bed_capacity > 0)",
-    "hospital_profiles:chk_hospital_emergency_level:CHECK (emergency_level >= 1 AND emergency_level <= 5)",
+
 
     # Token table constraints
     "password_reset_tokens:chk_password_reset_expires:CHECK (expires_at > created_at)",
@@ -136,7 +130,7 @@ async def create_user_role_enum(engine):
             # Create enum type for user roles
             await conn.execute(text("""
                 DO $$ BEGIN
-                    CREATE TYPE user_role_enum AS ENUM ('hospital', 'vendor', 'admin');
+                    CREATE TYPE user_role_enum AS ENUM ('HOSPITAL', 'VENDOR', 'ADMIN');
                 EXCEPTION
                     WHEN duplicate_object THEN null;
                 END $$;
